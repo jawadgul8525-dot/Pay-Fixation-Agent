@@ -581,17 +581,19 @@ def generate_pdf_bytes(data):
 # 5. STREAMLIT APPLICATION INTERFACE
 # ==============================================================================
 def main():
-    st.set_page_config(page_title="Pay Fixation Agent", layout="wide", page_icon="🎖️")
+    st.set_page_config(
+    page_title="Pay Fixation Agent",
+    layout="wide",
+    page_icon="logo.png"
+)
+col_logo, col_title = st.columns([1, 6])
 
-    # App Header with permanent logo support
-    col_logo, col_title = st.columns([1, 6])
-    with col_logo:
-        if os.path.exists("logo.png"):
-            st.image("logo.png", width=95)
-        else:
-            st.markdown("## 🎖️")
-    with col_title:
-        st.title("Pay Fixation Agent")
+with col_logo:
+    st.image("logo.png", width=95)
+
+with col_title:
+    st.title("Pay Fixation Agent")
+       
         st.caption("Developed by **SC Rehman Gul** to assist Civil Armed Forces (CAF) personnel in preparing and auditing basic pay fixation.")
 
     st.info("⚠️ **Official Audit Disclaimer:** All calculated results must be verified against official departmental notifications, government gazettes, and original service books.")
