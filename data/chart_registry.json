@@ -1,0 +1,60 @@
+{
+  "CAF": {
+    "active": {
+      "filename": "Bundled_Verified_CAF_Chart.xlsx",
+      "upload_date": "2026-10-29 10:00:00",
+      "approval_date": "2026-10-29 10:00:00",
+      "effective_years": [
+        1994,
+        2001,
+        2005,
+        2007,
+        2008,
+        2011,
+        2015,
+        2016,
+        2017,
+        2022,
+        2024,
+        2026
+      ],
+      "ranks": [
+        "NCs E",
+        "GD Sep",
+        "GD Lnk",
+        "GD Nk",
+        "GD Hav",
+        "GD N/Sub",
+        "Sub",
+        "SM"
+      ],
+      "data_file": "caf_active.json"
+    },
+    "backup": null
+  },
+  "Civil Servants": {
+    "active": {
+      "filename": "Bundled_Verified_BPS_Chart.xlsx",
+      "upload_date": "2026-10-29 10:00:00",
+      "approval_date": "2026-10-29 10:00:00",
+      "effective_years": [
+        2011,
+        2015,
+        2016,
+        2017,
+        2022
+      ],
+      "ranks": [
+        "BPS-1",
+        "BPS-5",
+        "BPS-7",
+        "BPS-11",
+        "BPS-14",
+        "BPS-16",
+        "BPS-17"
+      ],
+      "data_file": "civil_active.json"
+    },
+    "backup": null
+  }
+}
