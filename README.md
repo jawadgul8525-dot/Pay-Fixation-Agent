@@ -30,10 +30,8 @@ The application provides a user-friendly interface built with **Streamlit** and 
 ### 1. Clone the Repository
 
 ```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
+git clone <https://github.com/jawadgul8525-dot/Pay-Fixation-Agent>
 cd "Pay Fixation Agent"
-```
-Replace `<YOUR_GITHUB_REPOSITORY_URL>` with the HTTPS URL of this GitHub repository.
 
 ### 2. Create a Virtual Environment
 
