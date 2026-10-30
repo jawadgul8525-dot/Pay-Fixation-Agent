@@ -25,30 +25,37 @@ from reportlab.lib.styles import getSampleStyleSheet
 MIN_APP_DATE = datetime.date(1990, 1, 1)
 MAX_APP_DATE = datetime.date(2030, 12, 31)
 
-ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 20)]
+# All BPS Scales 1 to 22 without any missing scale
+ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 23)]
 CAF_RANKS = ["NCs E", "GD Sep", "GD Lnk", "GD Nk", "GD Hav", "GD N/Sub", "Sub", "SM", "H/Lt", "H/Capt"]
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 REGISTRY_FILE = os.path.join(DATA_DIR, "chart_registry.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ==============================================================================
-# 0. LOGO DISCOVERY & SAFE RENDERING
+# 0. ROBUST MULTI-PATH LOGO DISCOVERY
 # ==============================================================================
 def get_logo_path():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
-        os.path.join(os.path.dirname(__file__), "logo.png"),
-        "logo.png",
+        os.path.join(base_dir, "logo.png"),
+        os.path.join(base_dir, "assets", "logo.png"),
         os.path.join(os.getcwd(), "logo.png"),
-        os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+        "logo.png"
     ]
     for p in candidates:
         if os.path.exists(p) and os.path.isfile(p):
-            return p
+            return os.path.abspath(p)
+    # Search recursively in current repository folder
+    for root, _, files in os.walk(base_dir):
+        for f in files:
+            if f.lower() == "logo.png":
+                return os.path.abspath(os.path.join(root, f))
     return None
 
 # ==============================================================================
-# 1. VERIFIED CIVIL SERVANTS PAY SCALES (BPS-01 to BPS-19: 1983 - 2026)
+# 1. VERIFIED CIVIL SERVANTS PAY SCALES (BPS-01 to BPS-22: 1983 - 2026)
 # ==============================================================================
 DEFAULT_CIVIL_SCALES = {
     "BPS-01": {"1983-07-01":(440,10,640),"1987-07-01":(600,13,860),"1991-06-01":(920,26,1310),"1994-06-01":(1245,35,1770),"2001-12-01":(1870,55,3520),"2005-07-01":(2150,65,4100),"2007-07-01":(2475,75,4725),"2008-07-01":(2970,90,5670),"2011-07-01":(4800,150,9300),"2015-07-01":(6210,195,12060),"2016-07-01":(7640,240,14840),"2017-07-01":(9130,290,17830),"2022-07-01":(13550,430,26450),"2026-07-01":(16280,520,31880)},
@@ -69,8 +76,18 @@ DEFAULT_CIVIL_SCALES = {
     "BPS-16": {"1983-07-01":(1050,80,2250),"1987-07-01":(1350,105,2925),"1991-06-01":(1875,146,4065),"1994-06-01":(2535,197,5490),"2001-12-01":(3805,295,12655),"2005-07-01":(4375,340,14575),"2007-07-01":(5050,390,16750),"2008-07-01":(6060,470,20160),"2011-07-01":(10000,800,34000),"2015-07-01":(12910,1035,43960),"2016-07-01":(15880,1280,54280),"2017-07-01":(18910,1520,64510),"2022-07-01":(28070,2260,95870),"2026-07-01":(33720,2720,115320)},
     "BPS-17": {"1983-07-01":(1600,120,3040),"1987-07-01":(2065,155,3925),"1991-06-01":(2870,215,5450),"1994-06-01":(3880,290,7360),"2001-12-01":(6210,465,15510),"2005-07-01":(7140,535,17840),"2007-07-01":(8210,615,20510),"2008-07-01":(9850,740,24650),"2011-07-01":(16000,1200,40000),"2015-07-01":(20680,1555,51780),"2016-07-01":(25440,1930,64040),"2017-07-01":(30370,2300,76370),"2022-07-01":(45070,3420,113470),"2026-07-01":(54140,4110,136340)},
     "BPS-18": {"1983-07-01":(2100,150,3600),"1987-07-01":(2710,195,4660),"1991-06-01":(3765,271,6475),"1994-06-01":(5085,366,8745),"2001-12-01":(8135,585,19835),"2005-07-01":(9355,675,22855),"2007-07-01":(10760,775,26260),"2008-07-01":(12910,930,31510),"2011-07-01":(20000,1500,50000),"2015-07-01":(25940,1950,64940),"2016-07-01":(31890,2400,79890),"2017-07-01":(38350,2870,95750),"2022-07-01":(56880,4260,142080),"2026-07-01":(68330,5120,170730)},
-    "BPS-19": {"1983-07-01":(3200,160,4480),"1987-07-01":(4130,205,5770),"1991-06-01":(5740,285,8590),"1994-06-01":(7750,385,11600),"2001-12-01":(12400,615,24700),"2005-07-01":(14260,705,28360),"2007-07-01":(16400,810,32600),"2008-07-01":(19680,970,39080),"2011-07-01":(31000,1600,63000),"2015-07-01":(40155,2075,81655),"2016-07-01":(49370,2560,100570),"2017-07-01":(59210,3050,120210),"2022-07-01":(87840,4530,178440),"2026-07-01":(105510,5450,214510)}
+    "BPS-19": {"1983-07-01":(3200,160,4480),"1987-07-01":(4130,205,5770),"1991-06-01":(5740,285,8590),"1994-06-01":(7750,385,11600),"2001-12-01":(12400,615,24700),"2005-07-01":(14260,705,28360),"2007-07-01":(16400,810,32600),"2008-07-01":(19680,970,39080),"2011-07-01":(31000,1600,63000),"2015-07-01":(40155,2075,81655),"2016-07-01":(49370,2560,100570),"2017-07-01":(59210,3050,120210),"2022-07-01":(87840,4530,178440),"2026-07-01":(105510,5450,214510)},
+    "BPS-20": {"1983-07-01":(3700,230,6000),"1987-07-01":(4800,300,7800),"1991-06-01":(6675,415,10825),"1994-06-01":(9010,560,14610),"2001-12-01":(14420,895,23370),"2005-07-01":(16580,1030,26880),"2007-07-01":(19070,1185,30920),"2008-07-01":(22880,1420,37080),"2011-07-01":(36000,2350,59500),"2015-07-01":(46830,3075,71430),"2016-07-01":(57600,3780,87840),"2017-07-01":(69090,4510,105190),"2022-07-01":(102490,6690,156010),"2026-07-01":(122990,8030,187220)},
+    "BPS-21": {"1983-07-01":(4100,250,6600),"1987-07-01":(5350,330,8650),"1991-06-01":(7435,460,12035),"1994-06-01":(10035,625,16285),"2001-12-01":(16055,995,26005),"2005-07-01":(18465,1145,29915),"2007-07-01":(21235,1315,34385),"2008-07-01":(25480,1580,41280),"2011-07-01":(40000,2600,66000),"2015-07-01":(52150,3410,79430),"2016-07-01":(64140,4190,97620),"2017-07-01":(76880,5000,116880),"2022-07-01":(114040,7420,173400),"2026-07-01":(136850,8900,208050)},
+    "BPS-22": {"1983-07-01":(4400,300,7400),"1987-07-01":(5750,390,9650),"1991-06-01":(7990,545,13440),"1994-06-01":(10790,735,18140),"2001-12-01":(17265,1175,29015),"2005-07-01":(19855,1350,33355),"2007-07-01":(22835,1550,38335),"2008-07-01":(27400,1860,46000),"2011-07-01":(43000,3050,73500),"2015-07-01":(55890,4005,87930),"2016-07-01":(68740,4920,108100),"2017-07-01":(82380,5870,129340),"2022-07-01":(122190,8710,191870),"2026-07-01":(146630,10450,230230)}
 }
+
+# Add single-digit aliases (BPS-1 -> BPS-01) for seamless compatibility
+for i in range(1, 10):
+    k_double = f"BPS-{i:02d}"
+    k_single = f"BPS-{i}"
+    if k_double in DEFAULT_CIVIL_SCALES:
+        DEFAULT_CIVIL_SCALES[k_single] = DEFAULT_CIVIL_SCALES[k_double]
 
 # ==============================================================================
 # 2. VERIFIED CAF SCALES & CITATIONS (1994 - 2026)
@@ -337,7 +354,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     warnings = []
     events = []
 
-    # 1. Initial Appointment
+    # 1. Initial Appointment / Enrolment
     if category == "Civil Servants":
         events.append({
             "date": doe, "type": "ENROLLMENT", "rank": enrol_rank,
@@ -415,7 +432,6 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     if retirement_date and retirement_date <= end_date_str:
         ret_dt = datetime.datetime.strptime(retirement_date, "%Y-%m-%d").date()
         ret_mon = ret_dt.month
-        # Under OM F.3(4)R-2/2014-736 dated 21-09-2022: If retiring between 1st June and 30th Nov, entitled to 1 increment
         entitled_ret_inc = (6 <= ret_mon <= 11)
         events.append({
             "date": retirement_date, "type": "RETIREMENT",
@@ -431,7 +447,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     }
     events.sort(key=lambda x: (x["date"], priority.get(x["type"], 9)))
 
-    # Execution Loop
+    # Calculation Execution Loop
     ledger = []
     current_pay = 0
     current_rank = enrol_rank
@@ -456,8 +472,8 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 last_change_dt = ev_dt
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": ev["remarks"],
-                    "authority": ev["authority"]
+                    "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Initial Appointment"),
+                    "authority": ev.get("authority", "FR 22")
                 })
             else:
                 rates = rect_rates.get(qualification, [])
@@ -468,7 +484,8 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 last_change_dt = ev_dt
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": "Fixed", "remarks": ev["remarks"], "authority": ev["authority"]
+                    "scale": "Fixed", "remarks": ev.get("remarks", "Enrolled as Rect"),
+                    "authority": ev.get("authority", "HQ FC Orders")
                 })
 
         elif ev_t == "REMUSTERING":
@@ -479,8 +496,8 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
             last_change_dt = ev_dt
             ledger.append({
                 "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                "scale": format_scale_str(current_scale), "remarks": ev["remarks"],
-                "authority": ev["authority"]
+                "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Remustered"),
+                "authority": ev.get("authority", "Service Book Entry")
             })
 
         elif ev_t == "ANNUAL_INCREMENT":
@@ -494,10 +511,8 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                     "remarks": "Not entitled (< 6 mos in scale)", "authority": "OM F.1(1)-Imp-I/77"
                 })
             else:
-                active_inc = substantive_scale[1] if substantive_scale else current_scale[1]
-                # Check maximum of scale
-                if current_pay + active_inc > current_scale[2]:
-                    # At or beyond maximum: becomes Personal Pay under Finance Division rules
+                active_inc = substantive_scale[1] if substantive_scale else (current_scale[1] if current_scale else 0)
+                if current_scale and current_pay + active_inc > current_scale[2]:
                     personal_pay += active_inc
                     ledger.append({
                         "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
@@ -524,18 +539,44 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
                     "scale": format_scale_str(current_scale), "remarks": f"Pay Revision {ev['date'][:4]} (Stage {stages})",
-                    "authority": ev["authority"]
+                    "authority": ev.get("authority", "Govt of Pakistan Pay Revision")
                 })
             else:
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
                     "scale": format_scale_str(new_sc) if new_sc else "Missing Scale",
-                    "remarks": "Revision (Audit Required)", "authority": ev["authority"]
+                    "remarks": "Revision (Audit Required)", "authority": ev.get("authority", "—")
+                })
+
+        # CRITICAL FIX: Graceful handling of both General Scale Upgradation & Post Upgradation
+        elif ev_t == "UPGRADATION":
+            target_rank = ev.get("rank", current_rank)
+            new_sc = get_scale_at_date(target_rank, ev["date"], scales_dict, rev_tag=ev.get("rev_key"))
+            if new_sc and isinstance(current_pay, (int, float)):
+                p_step = new_sc[0]
+                while p_step < current_pay:
+                    p_step += new_sc[1]
+                current_pay = p_step
+                current_scale = new_sc
+                substantive_scale = new_sc
+                current_rank = target_rank
+                last_change_dt = ev_dt
+                remarks_text = ev.get("remarks") if ev.get("remarks") else f"Upgraded to {current_rank}"
+                ledger.append({
+                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
+                    "scale": format_scale_str(current_scale), "remarks": remarks_text,
+                    "authority": ev.get("authority", "Finance Div Upgradation Order")
+                })
+            else:
+                ledger.append({
+                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
+                    "scale": format_scale_str(new_sc) if new_sc else "Missing Scale",
+                    "remarks": "Upgradation (Review Req)", "authority": ev.get("authority", "—")
                 })
 
         elif ev_t == "PROMOTION":
-            new_rank = ev["rank"]
-            if new_rank in ["H/Lt", "H/Capt"]:
+            target_rank = ev.get("rank", current_rank)
+            if target_rank in ["H/Lt", "H/Capt"]:
                 sm_scale = get_scale_at_date("SM", ev["date"], scales_dict)
                 honorary_inc = sm_scale[1] if sm_scale else 0
                 if isinstance(current_pay, (int, float)):
@@ -544,11 +585,11 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
                     "scale": format_scale_str(substantive_scale) if substantive_scale else '"',
-                    "remarks": f"1 x adv inc on prom as {new_rank} (SM Scale basis)",
+                    "remarks": f"1 x adv inc on prom as {target_rank} (SM scale basis)",
                     "authority": "Army Regs / FC Orders"
                 })
             else:
-                current_rank = new_rank
+                current_rank = target_rank
                 new_sc = get_scale_at_date(current_rank, ev["date"], scales_dict)
                 if not new_sc:
                     warnings.append(f"HOLD: Scale missing for {current_rank} on {ev['date']}.")
@@ -558,44 +599,27 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                         p_step = new_sc[0]
                         while p_step < current_pay:
                             p_step += new_sc[1]
-                        current_pay = p_step + new_sc[1]  # Next stage + 1 premature increment
+                        current_pay = p_step + new_sc[1]  # Next stage + 1 premature promotional increment
                     current_scale = new_sc
                     substantive_scale = new_sc
                 last_change_dt = ev_dt
+                remarks_str = f"Promoted to {current_rank} (FR 22(a)(i))" if category == "Civil Servants" else f"Pmtd {current_rank.replace('GD ', '')}"
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": f"Promoted to {current_rank} (FR 22(a)(i))",
-                    "authority": ev["authority"]
-                })
-
-        elif ev_t == "UPGRADATION":
-            new_rank = ev["rank"]
-            new_sc = get_scale_at_date(new_rank, ev["date"], scales_dict)
-            if new_sc and isinstance(current_pay, (int, float)):
-                p_step = new_sc[0]
-                while p_step < current_pay:
-                    p_step += new_sc[1]
-                current_pay = p_step
-                current_scale = new_sc
-                substantive_scale = new_sc
-                current_rank = new_rank
-                last_change_dt = ev_dt
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": f"Upgraded to {current_rank}",
-                    "authority": ev["authority"]
+                    "scale": format_scale_str(current_scale), "remarks": remarks_str,
+                    "authority": ev.get("authority", "FR 22(a)(i)" if category == "Civil Servants" else "FC Promotion Rules")
                 })
 
         elif ev_t == "PAY_PROTECTION":
-            new_rank = ev["rank"]
-            new_sc = get_scale_at_date(new_rank, ev["date"], scales_dict)
+            target_rank = ev.get("rank", current_rank)
+            new_sc = get_scale_at_date(target_rank, ev["date"], scales_dict)
             current_scale = new_sc
             substantive_scale = new_sc
-            current_rank = new_rank
+            current_rank = target_rank
             last_change_dt = ev_dt
             ledger.append({
                 "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                "scale": format_scale_str(current_scale), "remarks": f"Transferred to {new_rank} (Pay Protected)",
+                "scale": format_scale_str(current_scale), "remarks": f"Transferred to {current_rank} (Pay Protected)",
                 "authority": "FR 22-B"
             })
 
@@ -900,13 +924,13 @@ def main():
     d_col1, d_col2 = st.columns(2)
     with d_col1:
         doe = st.date_input("Date of Appointment / Enrolment",
-                            value=datetime.date(1994, 6, 1),
+                            value=datetime.date(1994, 6, 1) if is_civil else datetime.date(2007, 3, 15),
                             min_value=MIN_APP_DATE,
                             max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
         d_remust = None
         if not is_civil and enrol_rank != "NCs E":
             d_remust = st.date_input("Date of Remustering",
-                                     value=datetime.date(1994, 12, 1),
+                                     value=datetime.date(2007, 9, 10),
                                      min_value=MIN_APP_DATE,
                                      max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
 
