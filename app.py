@@ -20,13 +20,15 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet
 
 # ==============================================================================
-# 0. PERSISTENCE LAYER & STORAGE DIRECTORIES
+# 0. PERSISTENCE & STORAGE CONFIGURATION
 # ==============================================================================
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 REGISTRY_FILE = os.path.join(DATA_DIR, "chart_registry.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Default historical bootstrap (Used ONLY until the first chart is activated)
+# ------------------------------------------------------------------------------
+# Verified CAF Uniformed Scales (1994 – 2026)
+# ------------------------------------------------------------------------------
 BOOTSTRAP_CAF_SCALES = {
     "NCs E": {
         "1994-06-01": (1245, 35, 1770), "2001-12-01": (1870, 55, 3520),
@@ -99,16 +101,6 @@ BOOTSTRAP_CAF_SCALES = {
     }
 }
 
-DEFAULT_CIVIL_SCALES = {
-    "BPS-1": {"2011-07-01": (4800, 150, 9300), "2015-07-01": (6210, 195, 12060), "2016-07-01": (7610, 240, 14840), "2017-07-01": (9125, 285, 17675), "2022-07-01": (13540, 430, 26440)},
-    "BPS-5": {"2011-07-01": (5400, 270, 13500), "2015-07-01": (6985, 350, 17485), "2016-07-01": (8590, 430, 21490), "2017-07-01": (10260, 510, 25560), "2022-07-01": (15230, 760, 38030)},
-    "BPS-7": {"2011-07-01": (5700, 310, 15000), "2015-07-01": (7370, 405, 19520), "2016-07-01": (9070, 500, 24070), "2017-07-01": (10835, 595, 28665), "2022-07-01": (16080, 890, 42780)},
-    "BPS-11": {"2011-07-01": (6600, 460, 20400), "2015-07-01": (8540, 595, 26390), "2016-07-01": (10310, 740, 32510), "2017-07-01": (12570, 880, 38970), "2022-07-01": (18650, 1310, 57950)},
-    "BPS-14": {"2011-07-01": (8000, 610, 26300), "2015-07-01": (10340, 790, 34040), "2016-07-01": (12500, 980, 41900), "2017-07-01": (15180, 1170, 50280), "2022-07-01": (22530, 1740, 74730)},
-    "BPS-16": {"2011-07-01": (10000, 800, 34000), "2015-07-01": (12880, 1030, 43780), "2016-07-01": (15600, 1280, 54000), "2017-07-01": (18910, 1520, 64510), "2022-07-01": (28070, 2260, 95870)},
-    "BPS-17": {"2011-07-01": (16000, 1200, 40000), "2015-07-01": (20680, 1550, 51680), "2016-07-01": (25440, 1930, 64040), "2017-07-01": (30370, 2300, 76370), "2022-07-01": (45070, 3420, 113470)}
-}
-
 DEFAULT_RECT_RATES = {
     "Matric": [
         ("1994-06-01", 1230), ("2001-12-01", 1845), ("2005-07-01", 2128),
@@ -124,6 +116,62 @@ DEFAULT_RECT_RATES = {
     ]
 }
 
+# ------------------------------------------------------------------------------
+# Official Federal Government Civil Servants Scales (1972 – 2026: BPS-01 to 19)
+# ------------------------------------------------------------------------------
+RAW_CIVIL_SERVANT_DATA = """
+BPS / Rank,01-03-1972,01-05-1977,01-07-1981,01-07-1983,01-07-1987,01-06-1991,01-06-1991_Rev,1994-06-01,01-12-2001,01-07-2005,01-07-2007,01-07-2008,01-07-2011,01-07-2015,01-07-2016,01-07-2017,01-07-2022,01-07-2026
+BPS-01,100-2-140,250-5-340,250-5-375,440-10-640,600-13-860,605-17-860,920-26-1310,1245-35-1770,1870-55-3520,2150-65-4100,2475-75-4725,2970-90-5670,4800-150-9300,6210-195-12060,7640-240-14840,9130-290-17830,13550-430-26450,16280-520-31880
+BPS-02,110-3-160,260-6-365,260-6-405,460-12-700,625-16-945,630-21-945,945-32-1425,1275-44-1935,1915-65-3865,2200-75-4450,2530-85-5080,3035-100-6035,4900-170-10000,6335-220-12935,7790-275-16040,9310-330-19210,13820-490-28520,16600-590-34300
+BPS-03,120-3-180,270-7-390,270-7-435,480-14-760,650-19-1030,655-25-1030,975-37-1530,1320-50-2070,1980-75-4230,2275-85-4825,2615-100-5615,3140-120-6740,5050-200-11050,6535-260-14335,8040-325-17790,9610-390-21310,14260-580-31660,17130-700-38130
+BPS-04,130-4-200,280-8-415,280-8-475,500-16-820,675-22-1115,680-29-1115,1005-43-1650,1360-58-2230,2040-85-4590,2345-100-5345,2700-115-6150,3240-140-7440,5200-230-12100,6730-300-15730,8280-370-19380,9900-440-23100,14690-660-34490,17650-800-41650
+BPS-05,150-6-280,290-10-470,290-10-540,520-18-880,700-25-1200,705-33-1200,1035-49-1770,1400-66-2390,2100-100-5100,2415-115-5865,2780-135-6830,3340-160-8140,5400-260-13200,6985-340-17185,8590-420-21190,10260-500-25260,15230-750-37730,18300-910-45600
+BPS-06,165-8-315,315-12-525,315-12-605,540-20-940,725-28-1285,730-37-1285,1065-54-1875,1440-73-2535,2160-110-5460,2485-125-6235,2860-145-7210,3430-175-8680,5600-290-14300,7235-375-18485,8900-470-23000,10620-590-28320,15760-840-40960,18930-1010-49230
+BPS-07,180-10-370,335-14-575,335-14-665,560-23-1020,750-31-1370,755-41-1370,1095-60-1995,1480-81-2695,2220-120-5820,2555-140-6755,2940-160-7740,3530-190-9230,5800-320-15400,7490-415-19940,9220-510-24520,10990-650-30490,16310-910-43610,19590-1100-52590
+BPS-08,200-12-425,370-16-640,370-16-750,590-26-1110,790-34-1470,795-45-1470,1140-65-2115,1540-88-2860,2310-130-6210,2655-150-7155,3055-175-8305,3665-210-9965,6000-350-16500,7750-455-21400,9540-560-26340,11380-700-32380,16890-1000-46890,20290-1210-56590
+BPS-09,225-15-480,390-20-700,390-20-820,620-29-1200,830-38-1590,840-50-1590,1185-72-2265,1605-97-3060,2410-145-6760,2770-165-7720,3185-190-8885,3820-230-10720,6200-380-17600,8015-495-22865,9860-610-28160,11770-760-34570,17470-1090-50170,20990-1310-60290
+BPS-10,250-18-540,410-22-760,410-22-900,660-32-1300,870-42-1710,870-56-1710,1230-79-2415,1660-107-3265,2490-160-7290,2865-185-8415,3295-215-9745,3955-260-11755,6400-420-19000,8275-544-24595,10180-670-30280,12160-820-36760,18050-1190-53750,21680-1430-64580
+BPS-11,275-20-600,430-24-830,430-24-980,700-35-1400,910-46-1830,915-61-1830,1275-86-2565,1725-116-3465,2590-175-7840,2980-200-8980,3430-230-10330,4115-275-12365,6600-460-20400,8540-595-26390,10510-740-32710,12570-900-39570,18650-1310-57950,22410-1580-69810
+BPS-12,300-20-650,460-28-900,460-28-1060,750-40-1550,970-52-2010,975-69-2010,1355-96-2795,1830-130-3780,2745-195-8595,3155-225-9905,3630-260-11430,4355-310-13655,7000-500-22000,9055-650-28555,11140-800-35140,13320-960-42120,19770-1430-62670,23750-1720-75350
+BPS-13,325-25-700,490-30-950,490-30-1125,800-45-1700,1035-58-2195,1040-77-2195,1440-107-3045,1950-144-4110,2925-215-9375,3365-245-10715,3870-285-12420,4645-340-14845,7500-550-24000,9700-715-31150,11930-880-38330,14260-1080-46660,21160-1560-67960,25420-1880-81820
+BPS-14,350-25-750,520-30-1010,520-30-1210,850-50-1850,1100-64-2380,1105-85-2380,1530-119-3315,2065-161-4480,3100-240-10300,3565-275-11815,4100-315-13550,4920-380-16320,8000-610-26300,10340-790-34040,12720-980-42120,15180-1280-53580,22530-1740-74730,27060-2090-89760
+BPS-15,375-25-825,550-35-1100,550-35-1350,900-55-2000,1165-71-2585,1160-95-2585,1620-131-3585,2190-177-4845,3285-265-11235,3780-305-12930,4350-350-14850,5220-420-17820,8500-700-29500,10985-905-38135,13510-1120-47110,16120-1330-56020,23920-1980-83320,28730-2380-100130
+BPS-16,400-35-1000,625-40-1325,625-40-1625,1050-80-2250,1350-105-2925,1350-105-2925,1875-146-4065,2535-197-5490,3805-295-12655,4375-340-14575,5050-390-16750,6060-470-20160,10000-800-34000,12910-1035-43960,15880-1280-54280,18910-1520-64510,28070-2260-95870,33720-2720-115320
+BPS-17,500-50-1250,900-50-1750,900-50-2250,1600-120-3040,2065-155-3925,2065-155-3925,2870-215-5450,3880-290-7360,6210-465-15510,7140-535-17840,8210-615-20510,9850-740-24650,16000-1200-40000,20680-1555-51780,25440-1930-64040,30370-2300-76370,45070-3420-113470,54140-4110-136340
+BPS-18,1000-75-1750,1350-75-2150,1350-75-2650,2100-150-3600,2710-195-4660,2710-195-4660,3765-271-6475,5085-366-8745,8135-585-19835,9355-675-22855,10760-775-26260,12910-930-31510,20000-1500-50000,25940-1950-64940,31890-2400-79890,38350-2870-95750,56880-4260-142080,68330-5120-170730
+BPS-19,1800-80-2200,2250-100-2750,2250-100-3050,3200-160-4480,4130-205-5770,4130-205-5770,5740-285-8590,7750-385-11600,12400-615-24700,14260-705-28360,16400-810-32600,19680-970-39080,31000-1600-63000,40155-2075-81655,49370-2560-100570,59210-3050-120210,87840-4530-178440,105510-5450-214510
+"""
+
+def parse_embedded_civil_scales():
+    lines = RAW_CIVIL_SERVANT_DATA.strip().split("\n")
+    headers = [h.strip() for h in lines[0].split(",")]
+    date_cols = headers[1:]
+    scales = {}
+    for line in lines[1:]:
+        parts = [p.strip() for p in line.split(",")]
+        rk = parts[0]
+        # Store both "BPS-01" and "BPS-1"
+        rk_clean = f"BPS-{int(rk.split('-')[1])}"
+        scales[rk] = {}
+        scales[rk_clean] = {}
+        for idx, dt in enumerate(date_cols):
+            val = parts[idx+1]
+            if val and "-" in val:
+                nums = [int(n) for n in val.split("-")]
+                sc = (nums[0], nums[1], nums[2])
+                norm_dt = dt.replace('/', '-')
+                if len(norm_dt) == 10 and norm_dt[2] == '-' and norm_dt[5] == '-':
+                    # DD-MM-YYYY to YYYY-MM-DD
+                    norm_dt = f"{norm_dt[6:]}-{norm_dt[3:5]}-{norm_dt[0:2]}"
+                scales[rk][norm_dt] = sc
+                scales[rk_clean][norm_dt] = sc
+    return scales
+
+DEFAULT_CIVIL_SCALES = parse_embedded_civil_scales()
+
+# ==============================================================================
+# 1. REGISTRY & FILE PERSISTENCE
+# ==============================================================================
 def load_registry():
     if os.path.exists(REGISTRY_FILE):
         try:
@@ -131,13 +179,12 @@ def load_registry():
                 return json.load(f)
         except Exception:
             pass
-    # Initialize Registry
+    # Initialize Registry with both categories
     reg = {
         "CAF": {
             "active": {
-                "filename": "Bundled_Verified_CAF_Chart.xlsx",
-                "upload_date": "2026-10-29 10:00:00",
-                "approval_date": "2026-10-29 10:00:00",
+                "filename": "Official_CAF_Pay_Scales_1994_2026.xlsx",
+                "approval_date": "2026-10-30 00:00:00",
                 "effective_years": [1994, 2001, 2005, 2007, 2008, 2011, 2015, 2016, 2017, 2022, 2024, 2026],
                 "ranks": list(BOOTSTRAP_CAF_SCALES.keys()),
                 "data_file": "caf_active.json"
@@ -146,11 +193,10 @@ def load_registry():
         },
         "Civil Servants": {
             "active": {
-                "filename": "Bundled_Verified_BPS_Chart.xlsx",
-                "upload_date": "2026-10-29 10:00:00",
-                "approval_date": "2026-10-29 10:00:00",
-                "effective_years": [2011, 2015, 2016, 2017, 2022],
-                "ranks": list(DEFAULT_CIVIL_SCALES.keys()),
+                "filename": "Official_Civil_Servants_BPS_1972_2026.csv",
+                "approval_date": "2026-10-30 00:00:00",
+                "effective_years": [1972, 1977, 1981, 1983, 1987, 1991, 1994, 2001, 2005, 2007, 2008, 2011, 2015, 2016, 2017, 2022, 2026],
+                "ranks": [f"BPS-{i:02d}" for i in range(1, 20)],
                 "data_file": "civil_active.json"
             },
             "backup": None
@@ -184,179 +230,139 @@ def load_category_data(category, filename):
     return BOOTSTRAP_CAF_SCALES, DEFAULT_RECT_RATES
 
 # ==============================================================================
-# 1. PARSER ENGINE FOR DYNAMIC UPLOADED CHARTS
+# 2. ADVANCED UPLOAD PARSER (HANDLES EB, SLASHD RATES, MATRIX & LONG)
 # ==============================================================================
 def format_scale_str(sc):
     return f"{sc[0]}-{sc[1]}-{sc[2]}" if sc else ""
 
+def normalize_rank_str(rk):
+    rk = rk.strip()
+    m = re.match(r'^bps-?0*(\d+)$', rk, re.IGNORECASE)
+    if m:
+        return f"BPS-{int(m.group(1)):02d}"
+    return rk
+
+def parse_scale_value(val_str):
+    val_str = str(val_str).strip()
+    if not val_str or val_str.lower() in ['nan', 'none', '-']:
+        return None
+    # Regular 3-number scale (e.g. 5400-270-13500)
+    m = re.match(r'^(\d+)\s*[-/]\s*(\d+)\s*[-/]\s*(\d+)$', val_str)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    # Handle older scales with Efficiency Bar (EB) or multi-increment
+    nums = re.findall(r'\b\d+\b', val_str)
+    if len(nums) >= 3:
+        # Min = first number, Max = last number, Inc = second number
+        return int(nums[0]), int(nums[1]), int(nums[-1])
+    return None
+
 def parse_uploaded_chart(uploaded_file):
-    """
-    Parses both Wide Matrix charts and Row-based (Tabular) charts.
-    Extracts Ranks, Scale Brackets (Min-Inc-Max), Effective Years, and Revision dates.
-    """
     try:
         if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
+            df = pd.read_csv(uploaded_file, header=None)
         else:
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(uploaded_file, header=None)
 
         df = df.dropna(how='all')
         if df.empty:
-            return None, "The uploaded file is empty."
+            return None, "File is empty."
 
-        scales = {}
-        rect_rates = {"Matric": [], "Non-Matric": []}
-        detected_years = set()
-        warnings = []
+        # Find header row containing 'BPS' or 'Rank'
+        hdr_idx = None
+        for r_i in range(min(5, len(df))):
+            row_vals = [str(x).lower() for x in df.iloc[r_i].values]
+            if any("bps" in x or "rank" in x for x in row_vals):
+                hdr_idx = r_i
+                break
+        if hdr_idx is None:
+            hdr_idx = 0
 
-        date_pat = re.compile(r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})')
-        year_pat = re.compile(r'\b(19\d\d|20\d\d)\b')
-        scale_pat = re.compile(r'(\d+)\s*[-/]\s*(\d+)\s*[-/]\s*(\d+)')
-        num_pat = re.compile(r'^\s*(\d+)\s*$')
+        df.columns = df.iloc[hdr_idx]
+        df = df.iloc[hdr_idx+1:].reset_index(drop=True)
 
         rank_col = None
         for col in df.columns:
-            if "rank" in str(col).lower() or "designation" in str(col).lower() or "bps" in str(col).lower():
+            if any(k in str(col).lower() for k in ["bps", "rank", "designation"]):
                 rank_col = col
                 break
         if rank_col is None:
             rank_col = df.columns[0]
 
-        eff_year_col = None
+        scales = {}
+        rect_rates = {"Matric": [], "Non-Matric": []}
+        detected_years = set()
+        date_cols = {}
+
+        year_pat = re.compile(r'\b(19\d\d|20\d\d)\b')
+        date_pat = re.compile(r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})')
+
         for col in df.columns:
-            if "effective" in str(col).lower() and "year" in str(col).lower():
-                eff_year_col = col
-                break
+            if col == rank_col:
+                continue
+            col_str = str(col).strip()
+            m_d = date_pat.search(col_str)
+            m_y = year_pat.search(col_str)
+            if m_d:
+                raw_d = m_d.group(1).replace('/', '-')
+                parts = raw_d.split('-')
+                iso_dt = f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}" if len(parts[0]) == 4 else f"{int(parts[2]):04d}-{int(parts[1]):02d}-{int(parts[0]):02d}"
+                date_cols[col] = iso_dt
+                if m_y:
+                    detected_years.add(int(m_y.group(1)))
+            elif m_y:
+                y_val = int(m_y.group(1))
+                date_cols[col] = f"{y_val}-07-01"
+                detected_years.add(y_val)
 
-        # Check if Tabular / Long format (Rows contain Rank, Effective Year, Scale)
-        scale_col = None
-        for col in df.columns:
-            if "scale" in str(col).lower() or "pay band" in str(col).lower():
-                scale_col = col
-                break
+        for _, row in df.iterrows():
+            raw_rk = str(row[rank_col]).strip()
+            if not raw_rk or raw_rk.lower() == 'nan':
+                continue
+            norm_rk = normalize_rank_str(raw_rk)
 
-        if eff_year_col and scale_col:
-            # TABULAR / LONG FORMAT
-            for _, row in df.iterrows():
-                rk = str(row[rank_col]).strip()
-                if not rk or rk.lower() == 'nan':
-                    continue
-                raw_y = str(row[eff_year_col]).strip()
-                m_y = year_pat.search(raw_y)
-                if not m_y:
-                    continue
-                year_int = int(m_y.group(1))
-                detected_years.add(year_int)
+            # Recruit stipend capture
+            if "rect" in raw_rk.lower():
+                cat = "Non-Matric" if "non" in raw_rk.lower() else "Matric"
+                for col, dt in date_cols.items():
+                    nums = re.findall(r'\b\d+\b', str(row[col]))
+                    if nums:
+                        rect_rates[cat].append((dt, int(nums[0])))
+                continue
 
-                # Look for explicit date in row
-                eff_date = f"{year_int}-07-01"
-                for c in df.columns:
-                    if "date" in str(c).lower():
-                        m_d = date_pat.search(str(row[c]))
-                        if m_d:
-                            eff_date = normalize_date_str(m_d.group(1))
-
-                val = str(row[scale_col]).strip()
-                m_sc = scale_pat.search(val)
-                if m_sc:
-                    min_p, inc_p, max_p = map(int, m_sc.groups())
-                    if rk not in scales:
-                        scales[rk] = {}
-                    scales[rk][eff_date] = (min_p, inc_p, max_p)
-        else:
-            # WIDE MATRIX FORMAT (Standard CAF / Ilyas Sb layout)
-            col_date_map = {}
-            for col in df.columns:
-                col_str = str(col).strip()
-                m_d = date_pat.search(col_str)
-                m_y = year_pat.search(col_str)
-                if m_d:
-                    iso_dt = normalize_date_str(m_d.group(1))
-                    if "upgradation" in col_str.lower():
-                        iso_dt += "_UPG"
-                    elif "revision" in col_str.lower() and iso_dt == "2005-07-01":
-                        iso_dt += "_REV"
-                    col_date_map[col] = iso_dt
-                    if m_y:
-                        detected_years.add(int(m_y.group(1)))
-                elif m_y:
-                    y_int = int(m_y.group(1))
-                    col_date_map[col] = f"{y_int}-07-01"
-                    detected_years.add(y_int)
-
-            for _, row in df.iterrows():
-                rk = str(row[rank_col]).strip()
-                if not rk or rk.lower() == 'nan':
-                    continue
-
-                # Recruit rates detection
-                if "rect" in rk.lower():
-                    cat = "Non-Matric" if "non" in rk.lower() else "Matric"
-                    for col, dt in col_date_map.items():
-                        v = str(row[col]).strip()
-                        m_n = num_pat.search(v)
-                        if m_n:
-                            amt = int(m_n.group(1))
-                            if amt > 0:
-                                pure_dt = dt.split("_")[0]
-                                rect_rates[cat].append((pure_dt, amt))
-                    continue
-
-                for col, dt in col_date_map.items():
-                    val = str(row[col]).strip()
-                    m_sc = scale_pat.search(val)
-                    if m_sc:
-                        min_p, inc_p, max_p = map(int, m_sc.groups())
-                        if rk not in scales:
-                            scales[rk] = {}
-                        scales[rk][dt] = (min_p, inc_p, max_p)
+            for col, dt in date_cols.items():
+                sc = parse_scale_value(row[col])
+                if sc:
+                    if norm_rk not in scales:
+                        scales[norm_rk] = {}
+                    scales[norm_rk][dt] = sc
 
         if not scales:
-            return None, "No valid scale entries found (Format must be 'Min-Inc-Max' e.g. 5400-270-13500)."
-
-        # Sort recruit rates
-        for cat in rect_rates:
-            rect_rates[cat].sort(key=lambda x: x[0])
+            return None, "No recognizable pay scale values found in document."
 
         return {
             "scales": scales,
             "rect_rates": rect_rates,
             "ranks": sorted(list(scales.keys())),
             "effective_years": sorted(list(detected_years)),
-            "warnings": warnings,
             "rows_read": len(df)
         }, None
     except Exception as e:
-        return None, f"Failed to interpret chart: {str(e)}"
-
-def normalize_date_str(raw_d):
-    raw_d = raw_d.replace('/', '-')
-    parts = raw_d.split('-')
-    if len(parts[0]) == 4:
-        return f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
-    return f"{int(parts[2]):04d}-{int(parts[1]):02d}-{int(parts[0]):02d}"
+        return None, f"Parsing error: {str(e)}"
 
 # ==============================================================================
-# 2. RUNTIME CALCULATION ENGINE
+# 3. RUNTIME CALCULATION ENGINE
 # ==============================================================================
-def get_rect_pay(qualification, enrol_date_str, rect_rates_dict):
-    rates = rect_rates_dict.get(qualification, rect_rates_dict.get("Matric", []))
-    applicable_pay = None
-    for rev_dt, rate in rates:
-        if rev_dt <= enrol_date_str:
-            applicable_pay = rate
-    return applicable_pay
-
 def get_scale_at_date(rank, target_date_str, scales_dict, rev_tag=None):
-    if rank not in scales_dict:
-        clean = rank.replace("GD ", "")
-        for k in scales_dict:
-            if clean.lower() == k.lower() or rank.lower() == k.lower():
-                rank = k
-                break
-    if rank not in scales_dict:
-        return None
-    r_scales = scales_dict[rank]
+    norm_rk = normalize_rank_str(rank)
+    if norm_rk not in scales_dict:
+        # Try alternate rank notation
+        alt = f"BPS-{int(norm_rk.split('-')[1])}" if "bps" in norm_rk.lower() else norm_rk
+        if alt in scales_dict:
+            norm_rk = alt
+        else:
+            return None
+    r_scales = scales_dict[norm_rk]
     if rev_tag and rev_tag in r_scales:
         return r_scales[rev_tag]
     target_dt = datetime.datetime.strptime(target_date_str, "%Y-%m-%d").date()
@@ -369,32 +375,30 @@ def get_scale_at_date(rank, target_date_str, scales_dict, rev_tag=None):
 
 def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instructions=""):
     doe = personnel["doe"]
-    enrol_rank = personnel.get("enrol_rank", "GD Sep")
+    enrol_rank = normalize_rank_str(personnel.get("enrol_rank", "BPS-01"))
     qualification = personnel.get("qualification", "Matric")
     d_remust = personnel.get("d_remust")
     promotions = personnel.get("promotions", [])
     end_date_str = personnel.get("end_date", "2026-07-01")
+    is_civil = (personnel.get("category") == "Civil Servants")
     warnings = []
 
-    # Detect dynamic revision schedule from active chart scales
     active_revisions = set()
     for rk, dt_dict in scales_dict.items():
         for d_key in dt_dict.keys():
             active_revisions.add(d_key)
 
     events = []
-    is_ncs_e = (enrol_rank == "NCs E")
-
-    if is_ncs_e:
-        events.append({"date": doe, "type": "ENROLLMENT", "rank": "NCs E", "remarks": "Enrolled directly as NCs E"})
+    if is_civil or enrol_rank == "NCs E":
+        events.append({"date": doe, "type": "ENROLLMENT", "rank": enrol_rank, "remarks": f"Appointed as {enrol_rank}"})
     else:
         events.append({"date": doe, "type": "ENROLLMENT", "rank": "GD Rect", "remarks": f"Enrolled as Rect ({qualification})"})
         if d_remust:
             events.append({"date": d_remust, "type": "REMUSTERING", "rank": enrol_rank, "remarks": "Remustered as train sldr"})
 
     for p in promotions:
-        p_rank = p["rank"]
-        events.append({"date": p["date"], "type": "PROMOTION", "rank": p_rank, "remarks": f"Pmtd {p_rank.replace('GD ', '')}"})
+        p_rank = normalize_rank_str(p["rank"])
+        events.append({"date": p["date"], "type": "PROMOTION", "rank": p_rank, "remarks": f"Pmtd to {p_rank}"})
 
     for r_key in sorted(list(active_revisions)):
         r_dt = r_key.split("_")[0]
@@ -414,7 +418,7 @@ def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instruct
 
     ledger = []
     current_pay = 0
-    current_rank = enrol_rank if is_ncs_e else "GD Sep"
+    current_rank = enrol_rank
     current_scale = None
     substantive_scale = None
     last_change_dt = None
@@ -424,11 +428,11 @@ def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instruct
         ev_t = ev["type"]
 
         if ev_t == "ENROLLMENT":
-            if is_ncs_e:
-                current_scale = get_scale_at_date("NCs E", ev["date"], scales_dict)
+            if is_civil or enrol_rank == "NCs E":
+                current_scale = get_scale_at_date(enrol_rank, ev["date"], scales_dict)
                 substantive_scale = current_scale
                 if not current_scale:
-                    warnings.append(f"HOLD — REVIEW REQUIRED: NCs E scale unavailable on {ev['date']} in active chart.")
+                    warnings.append(f"HOLD — REVIEW REQUIRED: Scale missing for {enrol_rank} on {ev['date']}.")
                     current_pay = "Review Req"
                 else:
                     current_pay = current_scale[0]
@@ -438,14 +442,11 @@ def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instruct
                     "scale": format_scale_str(current_scale), "remarks": ev["remarks"]
                 })
             else:
-                rect_pay = get_rect_pay(qualification, ev["date"], rect_rates)
+                rates = rect_rates.get(qualification, [])
+                rect_pay = next((r[1] for r in reversed(rates) if r[0] <= ev["date"]), None)
                 current_scale = get_scale_at_date(enrol_rank, ev["date"], scales_dict)
                 substantive_scale = current_scale
-                if rect_pay is None:
-                    warnings.append(f"HOLD — REVIEW REQUIRED: Recruit rate ({qualification}) missing for date {ev['date']}.")
-                    current_pay = "Review Req"
-                else:
-                    current_pay = rect_pay
+                current_pay = rect_pay if rect_pay else (current_scale[0] if current_scale else "Review Req")
                 last_change_dt = ev_dt
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
@@ -475,8 +476,8 @@ def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instruct
             if days_served < 180:
                 ledger.append({"date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"', "remarks": "Not entitled (< 6 mos in scale)"})
             else:
-                active_inc = substantive_scale[1] if substantive_scale else (current_scale[1] if current_scale else 0)
-                current_pay += active_inc
+                inc_val = substantive_scale[1] if substantive_scale else (current_scale[1] if current_scale else 0)
+                current_pay += inc_val
                 ledger.append({"date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"', "remarks": "A/Inc"})
 
         elif ev_t == "REVISION":
@@ -520,11 +521,7 @@ def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instruct
             new_rank = ev["rank"]
             if new_rank in ["H/Lt", "H/Capt"]:
                 sm_scale = get_scale_at_date("SM", ev["date"], scales_dict)
-                if not sm_scale:
-                    warnings.append(f"HOLD — REVIEW REQUIRED: SM Scale unavailable on {ev['date']} for {new_rank} advance increment.")
-                    honorary_inc = 0
-                else:
-                    honorary_inc = sm_scale[1]
+                honorary_inc = sm_scale[1] if sm_scale else 0
                 if isinstance(current_pay, (int, float)):
                     current_pay += honorary_inc
                 last_change_dt = ev_dt
@@ -544,7 +541,7 @@ def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instruct
                         p_step = new_sc[0]
                         while p_step < current_pay:
                             p_step += new_sc[1]
-                        current_pay = p_step + new_sc[1]
+                        current_pay = p_step + new_sc[1]  # Equal/Over + 1 Inc
                     current_scale = new_sc
                     substantive_scale = new_sc
                 last_change_dt = ev_dt
@@ -559,7 +556,7 @@ def run_pay_fixation_engine(personnel, scales_dict, rect_rates, special_instruct
     }
 
 # ==============================================================================
-# 3. MULTI-FORMAT EXPORT GENERATORS
+# 4. EXPORT HANDLERS (EXCEL, WORD, PDF)
 # ==============================================================================
 def generate_excel_bytes(data):
     wb = Workbook()
@@ -569,18 +566,18 @@ def generate_excel_bytes(data):
 
     h = data["header"]
     ws.merge_cells("A1:E1")
-    ws["A1"] = f"PAY FIXATION IRO FC NO. {h.get('fc_no','')} {h.get('rank','')} {h.get('name','').upper()}"
+    ws["A1"] = f"PAY FIXATION IRO {h.get('rank','')} {h.get('name','').upper()} ({h.get('fc_no','')})"
     ws["A1"].font = Font(name="Calibri", size=11, bold=True)
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
 
     bio = [
-        ("a", "Category & Active Chart", f"{h.get('category','CAF')} ({h.get('chart_name','')})"),
-        ("b", "D.O E", h.get("doe")),
-        ("c", "D.O.Remustration", h.get("d_remust", "N/A (Direct)"))
+        ("a", "Category & Active Chart", f"{h.get('category','Civil Servants')} [{h.get('chart_name','')}]"),
+        ("b", "Date of Appointment / Enrolment", h.get("doe")),
+        ("c", "Date of Remustering / Regularization", h.get("d_remust", "N/A (Direct Appt)"))
     ]
     letters = ["d", "e", "f", "g", "h", "i"]
     for idx, p in enumerate(h.get("promotions", [])):
-        bio.append((letters[idx], f"D.O.Promotion as {p['rank'].replace('GD ', '')}", p["date"]))
+        bio.append((letters[idx], f"Promotion to {p['rank']}", p["date"]))
 
     r = 3
     for mark, lbl, val in bio:
@@ -630,7 +627,7 @@ def generate_word_bytes(data):
     doc = Document()
     h = data["header"]
     p_title = doc.add_paragraph()
-    run = p_title.add_run(f"PAY FIXATION IRO FC NO. {h.get('fc_no','')} {h.get('rank','')} {h.get('name','').upper()}")
+    run = p_title.add_run(f"PAY FIXATION STATEMENT — {h.get('rank','')} {h.get('name','').upper()}")
     run.font.bold = True
     run.font.size = Pt(12)
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -643,19 +640,19 @@ def generate_word_bytes(data):
         r[1].text = lbl
         r[2].text = str(val) if val else "N/A"
         r[0].width = Inches(0.5)
-        r[1].width = Inches(2.6)
+        r[1].width = Inches(2.8)
         r[2].width = Inches(2.2)
 
-    add_bio("a.", "Chart Category", f"{h.get('category','CAF')} [{h.get('chart_name','')}]")
-    add_bio("b.", "D.O E", h.get("doe"))
-    add_bio("c.", "D.O.Remustration", h.get("d_remust", "N/A"))
-    letters = ["d.", "e.", "f.", "g.", "h.", "i."]
+    add_bio("a.", "Cadre / Chart", f"{h.get('category','Civil Servants')} [{h.get('chart_name','')}]")
+    add_bio("b.", "Personnel / Service ID", h.get("fc_no"))
+    add_bio("c.", "Date of Entry / Enrolment", h.get("doe"))
+    letters = ["d.", "e.", "f.", "g.", "h."]
     for idx, p in enumerate(h.get("promotions", [])):
-        add_bio(letters[idx], f"D.O.Promotion as {p['rank'].replace('GD ', '')}", p["date"])
+        add_bio(letters[idx], f"Promotion to {p['rank']}", p["date"])
 
     if data.get("special_instructions"):
         p_note = doc.add_paragraph()
-        r_note = p_note.add_run(f"\nSpecial Instructions: {data['special_instructions']} (Cross-check against service book)")
+        r_note = p_note.add_run(f"\nSpecial Directives: {data['special_instructions']} (Cross-check with Service Book)")
         r_note.font.italic = True
         r_note.font.color.rgb = RGBColor(0, 32, 96)
 
@@ -696,18 +693,18 @@ def generate_pdf_bytes(data):
         elements.append(Spacer(1, 4))
 
     h = data["header"]
-    title_text = f"<b>PAY FIXATION IRO FC NO. {h.get('fc_no','')} {h.get('rank','')} {h.get('name','').upper()}</b>"
+    title_text = f"<b>PAY FIXATION IRO {h.get('rank','')} {h.get('name','').upper()} ({h.get('fc_no','')})</b>"
     elements.append(Paragraph(title_text, styles['Title']))
     elements.append(Spacer(1, 8))
 
     bio_data = [
-        ["a.", "Chart Category", f"{h.get('category','CAF')} [{h.get('chart_name','')}]"],
-        ["b.", "D.O E", str(h.get("doe"))],
-        ["c.", "D.O.Remustration", str(h.get("d_remust", "N/A"))]
+        ["a.", "Chart Category", f"{h.get('category','Civil Servants')} [{h.get('chart_name','')}]"],
+        ["b.", "Date of Entry / Enrolment", str(h.get("doe"))],
+        ["c.", "Date of Remustering / Regularization", str(h.get("d_remust", "N/A (Direct)"))]
     ]
-    letters = ["d.", "e.", "f.", "g.", "h.", "i."]
+    letters = ["d.", "e.", "f.", "g.", "h."]
     for idx, p in enumerate(h.get("promotions", [])):
-        bio_data.append([letters[idx], f"D.O.Promotion as {p['rank'].replace('GD ', '')}", str(p["date"])])
+        bio_data.append([letters[idx], f"Promotion to {p['rank']}", str(p["date"])])
 
     t_bio = Table(bio_data, colWidths=[30, 210, 160])
     t_bio.setStyle(TableStyle([
@@ -746,172 +743,129 @@ def generate_pdf_bytes(data):
     doc.build(elements)
     return buf.getvalue()
 
-def create_registry_zip():
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for fname in os.listdir(DATA_DIR):
-            fpath = os.path.join(DATA_DIR, fname)
-            if os.path.isfile(fpath):
-                z.write(fpath, arcname=fname)
-    return buf.getvalue()
-
 # ==============================================================================
-# 4. STREAMLIT APPLICATION INTERFACE
+# 5. STREAMLIT APPLICATION INTERFACE
 # ==============================================================================
 def main():
     st.set_page_config(page_title="Pay Fixation Agent", layout="wide", page_icon="logo.png")
 
-    # Header with exact logo.png
     col_logo, col_title = st.columns([1, 6])
     with col_logo:
         if os.path.exists("logo.png"):
             st.image("logo.png", width=95)
     with col_title:
         st.title("Pay Fixation Agent")
-        st.caption("Developed by **SC Rehman Gul** to assist Civil Armed Forces (CAF) & Civil Servants in automated pay fixation.")
+        st.caption("Developed by **SC Rehman Gul** for Civil Armed Forces (CAF) & Federal Civil Servants.")
 
-    st.info("⚠️ **Audit Disclaimer:** This tool processes official scales dynamically. Always cross-check results against official departmental orders and service records.")
+    st.info("⚠️ **Audit Disclaimer:** All calculated basic pay fixations must be cross-checked against official service books and gazette notifications.")
 
-    # Load persistent registry
     registry = load_registry()
 
     # --------------------------------------------------------------------------
-    # SIDEBAR: DYNAMIC CHART MANAGEMENT & AUDIT VAULT
+    # SIDEBAR: CADRE SELECTION & REVISED CHART UPLOADER
     # --------------------------------------------------------------------------
-    st.sidebar.header("📁 Pay Chart Vault & Configuration")
-    target_category = st.sidebar.selectbox("Select Pay Scale Category", ["CAF", "Civil Servants"], index=0)
+    st.sidebar.header("📁 Pay Chart Management")
+    target_category = st.sidebar.selectbox("Active Cadre / Category", ["Civil Servants", "CAF"], index=0)
 
     cat_meta = registry[target_category]["active"]
-    st.sidebar.markdown(f"**Active Chart:** `{cat_meta['filename']}`")
-    st.sidebar.markdown(f"**Approval Date:** `{cat_meta['approval_date']}`")
-    st.sidebar.markdown(f"**Effective Years:** `{', '.join(map(str, cat_meta['effective_years']))}`")
+    st.sidebar.markdown(f"**Current Chart:** `{cat_meta['filename']}`")
+    st.sidebar.markdown(f"**Approved On:** `{cat_meta['approval_date']}`")
+    st.sidebar.markdown(f"**Revisions in Chart:** {len(cat_meta['effective_years'])} epochs ({cat_meta['effective_years'][0]} to {cat_meta['effective_years'][-1]})")
 
-    # Upload replacement chart
     st.sidebar.markdown("---")
-    st.sidebar.subheader(f"Upload Replacement for {target_category}")
+    st.sidebar.subheader(f"Upload Revised {target_category} Chart")
     uploaded_chart = st.sidebar.file_uploader(
-        f"Upload New {target_category} Chart (.xlsx, .xls, .csv)",
+        f"Replace {target_category} Chart (.xlsx, .csv)",
         type=["xlsx", "xls", "csv"],
-        key="chart_uploader"
+        key="new_chart_uploader"
     )
 
     if uploaded_chart is not None:
         parsed_res, err = parse_uploaded_chart(uploaded_chart)
         if err:
-            st.sidebar.error(f"❌ Validation Error: {err}")
+            st.sidebar.error(f"❌ {err}")
         else:
-            st.sidebar.success(f"✅ Readable: {parsed_res['rows_read']} rows, {len(parsed_res['ranks'])} ranks.")
-            st.sidebar.info(f"Years Detected: {parsed_res['effective_years']}")
-
-            with st.sidebar.expander("👁️ Preview Parsed Ranks"):
+            st.sidebar.success(f"✅ Valid: {len(parsed_res['ranks'])} ranks, {len(parsed_res['effective_years'])} revision years detected.")
+            with st.sidebar.expander("Preview Detected Scales"):
                 st.write(parsed_res["ranks"])
 
-            if st.sidebar.button(f"Confirm & Activate New {target_category} Chart", type="primary"):
-                # Move current active to backup
+            if st.sidebar.button(f"Confirm & Activate as New {target_category} Chart", type="primary"):
                 registry[target_category]["backup"] = cat_meta
-                # Save new file
                 new_data_file = f"{target_category.lower().replace(' ', '_')}_active.json"
                 save_category_data(target_category, parsed_res["scales"], parsed_res["rect_rates"], new_data_file)
 
-                # Update registry
                 registry[target_category]["active"] = {
                     "filename": uploaded_chart.name,
-                    "upload_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "approval_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "effective_years": parsed_res["effective_years"],
                     "ranks": parsed_res["ranks"],
                     "data_file": new_data_file
                 }
                 save_registry(registry)
-                st.sidebar.success(f"🎉 New {target_category} chart successfully activated!")
+                st.sidebar.success("🎉 New chart activated!")
                 st.rerun()
 
-    # Rollback support
-    if registry[target_category].get("backup"):
-        bak = registry[target_category]["backup"]
-        if st.sidebar.button(f"⏪ Rollback to Previous ({bak['filename']})"):
-            registry[target_category]["active"] = bak
-            registry[target_category]["backup"] = None
-            save_registry(registry)
-            st.sidebar.warning(f"Reverted to previous chart: {bak['filename']}")
-            st.rerun()
-
-    # Persistent Storage Download
-    st.sidebar.markdown("---")
-    st.sidebar.caption("💾 **Cloud Deployment Persistence:**")
-    st.sidebar.download_button(
-        label="Download Registry Backup (.zip)",
-        data=create_registry_zip(),
-        file_name="chart_registry_backup.zip",
-        mime="application/zip",
-        help="Commit this zip's extracted data/ folder to your GitHub repo to ensure permanent zero-loss persistence on Streamlit Cloud."
-    )
-
     # --------------------------------------------------------------------------
-    # MAIN FORM: PERSONNEL SERVICE HISTORY
+    # MAIN FORM: PERSONNEL RECORD
     # --------------------------------------------------------------------------
     active_scales, active_rect_rates = load_category_data(target_category, cat_meta["data_file"])
-    available_ranks = cat_meta["ranks"]
+    available_ranks = sorted(list(active_scales.keys()))
     if not available_ranks:
-        available_ranks = ["GD Sep", "GD Lnk", "GD Nk", "GD Hav", "GD N/Sub", "Sub", "SM"]
+        available_ranks = [f"BPS-{i:02d}" for i in range(1, 20)] if target_category == "Civil Servants" else ["GD Sep", "GD Lnk", "GD Nk", "GD Hav", "GD N/Sub", "Sub", "SM"]
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("👤 Personnel Profile")
-        fc_no = st.text_input("Service / FC / Personnel No.", value="102052")
-        name = st.text_input("Full Name", value="Jamal")
+        st.subheader("👤 Employee Bio-Data")
+        fc_no = st.text_input("Personnel / Service / FC No.", value="CS-10492" if target_category == "Civil Servants" else "102052")
+        name = st.text_input("Full Name", value="Muhammad Ali" if target_category == "Civil Servants" else "Jamal")
 
-        # Rank selector directly powered by active chart
-        final_rank = st.selectbox("Substantive / Final Rank", available_ranks, index=min(5, len(available_ranks)-1))
-        enrol_rank = st.selectbox("Enrolled Rank", available_ranks, index=0)
+        final_rank = st.selectbox("Current / Substantive Rank", available_ranks, index=min(10, len(available_ranks)-1))
+        enrol_rank = st.selectbox("Appointment / Enrolled Rank", available_ranks, index=0)
 
         qualification = "Matric"
         if target_category == "CAF":
             qualification = st.radio("Recruit Educational Category", ["Matric", "Non-Matric"], horizontal=True)
 
-        doe = st.date_input("Date of Enrollment (D.O.E)",
-                            value=datetime.date(2007, 3, 15),
-                            min_value=datetime.date(1990, 1, 1),
+        doe = st.date_input("Date of Appointment / Enrolment",
+                            value=datetime.date(1994, 6, 1),
+                            min_value=datetime.date(1972, 1, 1),
                             max_value=datetime.date(2035, 12, 31)).strftime("%Y-%m-%d")
 
         d_remust = None
         if target_category == "CAF" and enrol_rank != "NCs E":
             d_remust = st.date_input("Date of Remustering",
-                                     value=datetime.date(2007, 9, 10),
-                                     min_value=datetime.date(1990, 1, 1),
+                                     value=datetime.date(1994, 12, 1),
+                                     min_value=datetime.date(1972, 1, 1),
                                      max_value=datetime.date(2035, 12, 31)).strftime("%Y-%m-%d")
 
     with col2:
         st.subheader("📈 Promotion History")
-        st.caption("Promotions will be checked against the active dynamic chart:")
-        num_promotions = st.number_input("Number of Promotions to Add", min_value=0, max_value=8, value=4, step=1)
+        st.caption(f"Enter promotion events validated against active {target_category} chart:")
+        num_promos = st.number_input("Number of Promotions", min_value=0, max_value=8, value=3, step=1)
         promotions = []
         default_promos = [
-            (datetime.date(2012, 3, 15), "GD Lnk"),
-            (datetime.date(2014, 2, 20), "GD Nk"),
-            (datetime.date(2017, 12, 2), "GD Hav"),
-            (datetime.date(2026, 1, 8), "GD N/Sub"),
-            (datetime.date(2028, 1, 1), "Sub"),
-            (datetime.date(2030, 1, 1), "SM")
+            (datetime.date(2001, 12, 1), available_ranks[min(4, len(available_ranks)-1)]),
+            (datetime.date(2011, 7, 1), available_ranks[min(8, len(available_ranks)-1)]),
+            (datetime.date(2017, 7, 1), available_ranks[min(13, len(available_ranks)-1)]),
+            (datetime.date(2022, 7, 1), available_ranks[min(15, len(available_ranks)-1)])
         ]
-        for i in range(num_promotions):
+        for i in range(num_promos):
             p_c1, p_c2 = st.columns([1, 1])
             def_dt, def_rk = default_promos[i] if i < len(default_promos) else (datetime.date(2020, 1, 1), available_ranks[0])
             with p_c1:
                 p_dt = st.date_input(f"Promo {i+1} Date", value=def_dt,
-                                     min_value=datetime.date(1990, 1, 1),
+                                     min_value=datetime.date(1972, 1, 1),
                                      max_value=datetime.date(2035, 12, 31),
-                                     key=f"p_dt_{i}").strftime("%Y-%m-%d")
+                                     key=f"promo_dt_{i}").strftime("%Y-%m-%d")
             with p_c2:
-                # Fallback to available ranks
                 cur_idx = available_ranks.index(def_rk) if def_rk in available_ranks else 0
-                p_rk = st.selectbox(f"Promo {i+1} Rank", available_ranks + ["H/Lt", "H/Capt"], index=cur_idx, key=f"p_rk_{i}")
+                p_rk = st.selectbox(f"Promo {i+1} Rank", available_ranks, index=cur_idx, key=f"promo_rk_{i}")
             promotions.append({"date": p_dt, "rank": p_rk})
 
     st.markdown("---")
-    st.subheader("📝 Directives & Special Instructions")
+    st.subheader("📝 Audit Directives & Special Instructions")
     special_instructions = st.text_input(
-        "Enter case-specific orders or notes (e.g., '1 x adv increment for FA/Matric', 'Withheld increment 2013', 'Pay protection order'):",
+        "Enter case-specific orders or notes (e.g., 'Adv increment on qualification', 'Move-over order', 'Personal Pay protected'):",
         placeholder="Type order reference here..."
     )
 
@@ -930,7 +884,6 @@ def main():
             "chart_name": cat_meta["filename"]
         }
 
-        # Calculate using the active dynamic chart
         result = run_pay_fixation_engine(personnel_payload, active_scales, active_rect_rates, special_instructions)
 
         if result.get("warnings"):
@@ -965,7 +918,6 @@ def main():
         )
 
         st.markdown("---")
-        # Direct Access & QR Share Card
         share_col_logo, share_col_info, share_col_qr = st.columns([1, 3, 2])
         with share_col_logo:
             if os.path.exists("logo.png"):
