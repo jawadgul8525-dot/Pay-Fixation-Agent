@@ -25,7 +25,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 MIN_APP_DATE = datetime.date(1990, 1, 1)
 MAX_APP_DATE = datetime.date(2030, 12, 31)
 
-REGISTRY_SCHEMA_VERSION = "2026.11.v3_FULL_DEPTH"
+REGISTRY_SCHEMA_VERSION = "2026.11.v4_ILYAS_SB_FORMAT"
 
 ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 23)]
 CAF_RANKS = ["NCs E", "GD Sep", "GD Lnk", "GD Nk", "GD Hav", "GD N/Sub", "Sub", "SM", "H/Lt", "H/Capt"]
@@ -35,7 +35,7 @@ REGISTRY_FILE = os.path.join(DATA_DIR, "chart_registry.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ==============================================================================
-# 0. LOGO DISCOVERY & SAFE RENDERING
+# 0. ROBUST MULTI-PATH LOGO DISCOVERY & DATE FORMATTER
 # ==============================================================================
 def get_logo_path():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -53,6 +53,65 @@ def get_logo_path():
             if f.lower() == "logo.png":
                 return os.path.abspath(os.path.join(root, f))
     return None
+
+def to_display_date(d_val):
+    if not d_val or str(d_val).strip() in ["", "None", "N/A"]:
+        return "N/A"
+    try:
+        if isinstance(d_val, (datetime.date, datetime.datetime)):
+            return d_val.strftime("%d-%m-%Y")
+        clean_d = str(d_val).strip()[:10].replace('/', '-')
+        parts = clean_d.split('-')
+        if len(parts) == 3:
+            if len(parts[0]) == 4:
+                return f"{int(parts[2]):02d}-{int(parts[1]):02d}-{parts[0]}"
+            else:
+                return f"{int(parts[0]):02d}-{int(parts[1]):02d}-{parts[2]}"
+    except Exception:
+        pass
+    return str(d_val)
+
+def build_particulars_rows(h):
+    rows = []
+    # a. Date of Enrolment / Appointment
+    is_caf = (h.get("category") == "CAF")
+    lbl_enrol = "D.O E" if is_caf else "D.O.Appointment"
+    rows.append(("a", lbl_enrol, to_display_date(h.get("doe"))))
+
+    marker_idx = 1
+    letters = ["b.", "c.", "d.", "e.", "f.", "g.", "h.", "i.", "j.", "k.", "l.", "m."]
+
+    # b. Date of Remustering (where applicable)
+    if is_caf and h.get("enrol_rank") != "NCs E":
+        remust = h.get("d_remust")
+        if remust:
+            m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
+            rows.append((m, "D.O.Remustration", to_display_date(remust)))
+            marker_idx += 1
+
+    # Promotions
+    for p in h.get("promotions", []):
+        p_rk = str(p.get("rank", "")).replace("GD ", "")
+        p_dt = to_display_date(p.get("date", ""))
+        m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
+        rows.append((m, f"D.O.Promotion as {p_rk}", p_dt))
+        marker_idx += 1
+
+    # Upgradations
+    for u in h.get("upgradations", []):
+        u_rk = str(u.get("rank", ""))
+        u_dt = to_display_date(u.get("date", ""))
+        m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
+        rows.append((m, f"D.O.Upgradation as {u_rk}", u_dt))
+        marker_idx += 1
+
+    # Retirement
+    if h.get("retirement_date"):
+        m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
+        rows.append((m, "D.O.Retirement", to_display_date(h.get("retirement_date"))))
+        marker_idx += 1
+
+    return rows
 
 # ==============================================================================
 # 1. VERIFIED CIVIL SERVANTS PAY SCALES (BPS-01 to BPS-22: 1983 - 2026)
@@ -82,7 +141,7 @@ DEFAULT_CIVIL_SCALES = {
     "BPS-22": {"1983-07-01":(4400,300,7400),"1987-07-01":(5750,390,9650),"1991-06-01":(7990,545,13440),"1994-06-01":(10790,735,18140),"2001-12-01":(17265,1175,29015),"2005-07-01":(19855,1350,33355),"2007-07-01":(22835,1550,38335),"2008-07-01":(27400,1860,46000),"2011-07-01":(43000,3050,73500),"2015-07-01":(55890,4005,87930),"2016-07-01":(68740,4920,108100),"2017-07-01":(82380,5870,129340),"2022-07-01":(122190,8710,191870),"2026-07-01":(146630,10450,230230)}
 }
 
-# Add alias keys like "BPS-1" for "BPS-01"
+# Alias mapping BPS-1 -> BPS-01
 for i in range(1, 10):
     k_dbl = f"BPS-{i:02d}"
     k_sng = f"BPS-{i}"
@@ -134,29 +193,10 @@ DEFAULT_RECT_RATES = {
     ]
 }
 
-OFFICIAL_OM_REFERENCES = {
-    "1983-07-01": "Finance Div OM No. F.1(1)-Imp-I/83 (First Basic Pay Scale)",
-    "1987-07-01": "Finance Div OM No. F.1(1)-Imp/87",
-    "1991-06-01": "Finance Div OM No. F.1(7)-Imp-II/91",
-    "1994-06-01": "Finance Div OM No. F.1(2)-Imp/94(i)",
-    "2001-12-01": "Finance Div OM No. F.1(5)-Imp/2001",
-    "2005-07-01": "Finance Div OM No. F.1(1)-Imp/2005",
-    "2007-07-01": "Finance Div OM No. F.1(1)-Imp/2007",
-    "2008-07-01": "Finance Div OM No. F.1(1)-Imp/2008",
-    "2011-07-01": "Finance Div OM No. F.1(5)-Imp/2011",
-    "2015-07-01": "Finance Div OM No. F.1(3)-Imp/2015-646",
-    "2016-07-01": "Finance Div OM No. F.1(2)-Imp/2016-333",
-    "2017-07-01": "Finance Div OM No. F.1(3)-Imp/2017-500",
-    "2022-07-01": "Finance Div OM No. F.1(2)-Imp/2022-283",
-    "2024-06-01": "Finance Div (Army Scale Rectified)",
-    "2026-07-01": "Pay & Pension Commission Revision"
-}
-
 # ==============================================================================
 # 3. SELF-HEALING REGISTRY & FILE PERSISTENCE
 # ==============================================================================
 def load_registry():
-    reset_needed = False
     if os.path.exists(REGISTRY_FILE):
         try:
             with open(REGISTRY_FILE, "r") as f:
@@ -166,7 +206,6 @@ def load_registry():
         except Exception:
             pass
 
-    # Fresh initialize / upgrade
     reg = {
         "_version": REGISTRY_SCHEMA_VERSION,
         "CAF": {
@@ -215,7 +254,6 @@ def load_category_data(category, filename):
                 d = json.load(f)
                 disk_scales = d.get("scales", {})
                 disk_rect = d.get("rect_rates", {})
-                # Check if disk copy has full historical depth
                 if category == "Civil Servants":
                     has_early = any("1983" in dt or "1994" in dt for sc_map in disk_scales.values() for dt in sc_map.keys())
                     if has_early and len(disk_scales) >= 19:
@@ -226,7 +264,6 @@ def load_category_data(category, filename):
         except Exception:
             pass
 
-    # Heal & overwrite with complete baseline
     save_category_data(category, base_scales, base_rect, filename)
     return base_scales, base_rect
 
@@ -379,31 +416,31 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     if category == "Civil Servants":
         events.append({
             "date": doe, "type": "ENROLLMENT", "rank": enrol_rank,
-            "remarks": f"Initial Appointment to {enrol_rank} (FR 22)", "authority": "FR 22 / Establishment Rules"
+            "remarks": f"Appointed as {enrol_rank}"
         })
     elif enrol_rank == "NCs E":
         events.append({
             "date": doe, "type": "ENROLLMENT", "rank": "NCs E",
-            "remarks": "Enrolled directly as NCs E", "authority": "FC Pay & Allowance Orders"
+            "remarks": "Enrolled directly as NCs E"
         })
     else:
         events.append({
             "date": doe, "type": "ENROLLMENT", "rank": "GD Rect",
-            "remarks": f"Enrolled as Rect ({qualification})", "authority": "HQ FC Recruitment Rules"
+            "remarks": f"Enrolled as GD Rect"
         })
         if d_remust:
             events.append({
                 "date": d_remust, "type": "REMUSTERING", "rank": enrol_rank,
-                "remarks": "Remustered as trained soldier (GD Sep)", "authority": "Service Book Entry"
+                "remarks": "Remustered as train sldr"
             })
 
     # 2. Promotions
     for p in promotions:
         p_rk = normalize_rank_str(p["rank"])
-        auth = "FR 22(a)(i)" if category == "Civil Servants" else "FC Promotion Rules"
+        rem = f"Promoted to {p_rk}" if category == "Civil Servants" else f"Pmtd {p_rk.replace('GD ', '')}"
         events.append({
             "date": p["date"], "type": "PROMOTION", "rank": p_rk,
-            "remarks": f"Promotion to {p_rk}", "authority": auth
+            "remarks": rem
         })
 
     # 3. Upgradations
@@ -411,7 +448,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
         u_rk = normalize_rank_str(u["rank"])
         events.append({
             "date": u["date"], "type": "UPGRADATION", "rank": u_rk,
-            "remarks": f"Upgradation of Post to {u_rk}", "authority": u.get("authority", "Finance Div Upgradation OM")
+            "remarks": f"Upgraded to {u_rk}"
         })
 
     # 4. Transfers / Pay Protections
@@ -419,7 +456,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
         t_rk = normalize_rank_str(t["rank"])
         events.append({
             "date": t["date"], "type": "PAY_PROTECTION", "rank": t_rk,
-            "remarks": f"Transferred / Regularized to {t_rk} (Pay Protected)", "authority": "FR 22-B Pay Protection"
+            "remarks": f"Transferred to {t_rk} (Pay Protected)"
         })
 
     # 5. Dynamic Scale Revisions
@@ -431,11 +468,11 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     for r_key in sorted(list(active_revisions)):
         r_dt = r_key.split("_")[0]
         r_type = "UPGRADATION" if "UPG" in r_key else "REVISION"
-        auth = OFFICIAL_OM_REFERENCES.get(r_dt, "Govt of Pakistan Pay Revision")
+        rem_str = "Upgradation" if "UPG" in r_key else "Revision"
         if doe <= r_dt <= end_date_str:
             events.append({
                 "date": r_dt, "type": r_type, "rev_key": r_key,
-                "remarks": f"Basic Pay Scale Revision {r_dt[:4]}", "authority": auth
+                "remarks": rem_str
             })
 
     # 6. Annual Increments (Every 1st December)
@@ -446,7 +483,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
         if doe <= inc_dt <= end_date_str:
             events.append({
                 "date": inc_dt, "type": "ANNUAL_INCREMENT",
-                "remarks": "Annual Increment (A/Inc)", "authority": "FR 24 / OM F.1(1)-Imp-I/77"
+                "remarks": "A/Inc"
             })
 
     # 7. Retirement Event
@@ -457,8 +494,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
         events.append({
             "date": retirement_date, "type": "RETIREMENT",
             "entitled_increment": entitled_ret_inc,
-            "remarks": "Superannuation / Retirement from Service",
-            "authority": "CSR / OM F.3(4)R-2/2014-736 (21-09-2022)"
+            "remarks": "Retirement"
         })
 
     priority = {
@@ -491,8 +527,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 last_change_dt = ev_dt
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Initial Appointment"),
-                    "authority": ev.get("authority", "FR 22")
+                    "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Initial Appointment")
                 })
             else:
                 rates = rect_rates.get(qualification, [])
@@ -503,8 +538,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 last_change_dt = ev_dt
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": "Fixed", "remarks": ev.get("remarks", "Enrolled as Rect"),
-                    "authority": ev.get("authority", "HQ FC Orders")
+                    "scale": "Fixed", "remarks": ev.get("remarks", "Enrolled as GD Rect")
                 })
 
         elif ev_t == "REMUSTERING":
@@ -515,19 +549,18 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
             last_change_dt = ev_dt
             ledger.append({
                 "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Remustered"),
-                "authority": ev.get("authority", "Service Book Entry")
+                "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Remustered as train sldr")
             })
 
         elif ev_t == "ANNUAL_INCREMENT":
             if not isinstance(current_pay, (int, float)):
-                ledger.append({"date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"', "remarks": "HOLD — Scale Unresolved", "authority": "—"})
+                ledger.append({"date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"', "remarks": "HOLD — Scale Unresolved"})
                 continue
             days_served = (ev_dt - last_change_dt).days if last_change_dt else 365
             if days_served < 180:
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
-                    "remarks": "Not entitled (< 6 mos in scale)", "authority": "OM F.1(1)-Imp-I/77"
+                    "remarks": "Not entitled"
                 })
             else:
                 active_inc = substantive_scale[1] if substantive_scale else (current_scale[1] if current_scale else 0)
@@ -535,14 +568,13 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                     personal_pay += active_inc
                     ledger.append({
                         "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
-                        "remarks": f"At Ceiling (Rs. {personal_pay} as Personal Pay beyond max)",
-                        "authority": "FR 9(23) / OM Beyond Max Inc."
+                        "remarks": f"At Ceiling (Rs. {personal_pay} PP)"
                     })
                 else:
                     current_pay += active_inc
                     ledger.append({
                         "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
-                        "remarks": "Annual Increment (A/Inc)", "authority": "FR 24 (1st Dec Rule)"
+                        "remarks": "A/Inc"
                     })
 
         elif ev_t == "REVISION":
@@ -557,14 +589,13 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 substantive_scale = new_sc
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": f"Pay Revision {ev['date'][:4]} (Stage {stages})",
-                    "authority": ev.get("authority", "Govt of Pakistan Pay Revision")
+                    "scale": format_scale_str(current_scale), "remarks": "Revision"
                 })
             else:
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
                     "scale": format_scale_str(new_sc) if new_sc else "Missing Scale",
-                    "remarks": "Revision (Audit Required)", "authority": ev.get("authority", "—")
+                    "remarks": "Revision"
                 })
 
         elif ev_t == "UPGRADATION":
@@ -579,17 +610,16 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 substantive_scale = new_sc
                 current_rank = target_rank
                 last_change_dt = ev_dt
-                remarks_text = ev.get("remarks") if ev.get("remarks") else f"Upgraded to {current_rank}"
+                remarks_text = ev.get("remarks") if ev.get("remarks") else "Upgradation"
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": remarks_text,
-                    "authority": ev.get("authority", "Finance Div Upgradation Order")
+                    "scale": format_scale_str(current_scale), "remarks": remarks_text
                 })
             else:
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
                     "scale": format_scale_str(new_sc) if new_sc else "Missing Scale",
-                    "remarks": "Upgradation (Review Req)", "authority": ev.get("authority", "—")
+                    "remarks": "Upgradation"
                 })
 
         elif ev_t == "PROMOTION":
@@ -603,8 +633,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
                     "scale": format_scale_str(substantive_scale) if substantive_scale else '"',
-                    "remarks": f"1 x adv inc on prom as {target_rank} (SM scale basis)",
-                    "authority": "Army Regs / FC Orders"
+                    "remarks": f"1 x adv inc on prom as {target_rank}"
                 })
             else:
                 current_rank = target_rank
@@ -621,11 +650,10 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                     current_scale = new_sc
                     substantive_scale = new_sc
                 last_change_dt = ev_dt
-                remarks_str = f"Promoted to {current_rank} (FR 22(a)(i))" if category == "Civil Servants" else f"Pmtd {current_rank.replace('GD ', '')}"
+                remarks_str = f"Pmtd {current_rank.replace('GD ', '')}"
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": remarks_str,
-                    "authority": ev.get("authority", "FR 22(a)(i)" if category == "Civil Servants" else "FC Promotion Rules")
+                    "scale": format_scale_str(current_scale), "remarks": remarks_str
                 })
 
         elif ev_t == "PAY_PROTECTION":
@@ -637,8 +665,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
             last_change_dt = ev_dt
             ledger.append({
                 "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                "scale": format_scale_str(current_scale), "remarks": f"Transferred to {current_rank} (Pay Protected)",
-                "authority": "FR 22-B"
+                "scale": format_scale_str(current_scale), "remarks": f"Transferred to {current_rank} (Pay Protected)"
             })
 
         elif ev_t == "RETIREMENT":
@@ -649,15 +676,13 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": final_pension_pay,
                     "scale": format_scale_str(current_scale),
-                    "remarks": f"Retirement / Pension Pay (Incl Usual Inc w.e.f 1st June Rule)",
-                    "authority": "OM F.3(4)R-2/2014-736"
+                    "remarks": "Usual Increment on retirement"
                 })
             else:
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
                     "scale": format_scale_str(current_scale),
-                    "remarks": "Superannuation / Retirement (Final Pay Fixed)",
-                    "authority": "Civil Service Regulations (CSR)"
+                    "remarks": "Retirement"
                 })
 
     return {
@@ -667,8 +692,14 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     }
 
 # ==============================================================================
-# 6. MULTI-FORMAT REPORT GENERATORS (EXCEL, WORD, PDF)
+# 6. EXACT "ILYAS SB" REPORT GENERATORS (EXCEL, WORD, PDF)
 # ==============================================================================
+def get_official_heading(h):
+    fc_no = str(h.get('fc_no', '')).strip()
+    rank = str(h.get('rank', '')).strip()
+    name = str(h.get('name', '')).strip().upper()
+    return f"PAY FIXATION IRO OF FC / PERSONAL {fc_no}, Rank/Designation {rank} and Name {name}"
+
 def generate_excel_bytes(data):
     wb = Workbook()
     ws = wb.active
@@ -676,58 +707,80 @@ def generate_excel_bytes(data):
     ws.views.sheetView[0].showGridLines = True
 
     h = data["header"]
-    ws.merge_cells("A1:F1")
-    ws["A1"] = f"PAY FIXATION STATEMENT — {h.get('name','').upper()} ({h.get('fc_no','')})"
-    ws["A1"].font = Font(name="Calibri", size=12, bold=True)
-    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    heading_text = get_official_heading(h)
 
-    bio = [
-        ("a", "Service Cadre / Category", f"{h.get('category','Civil Servants')} [{h.get('chart_name','')}]"),
-        ("b", "Personnel / Service ID", h.get("fc_no")),
-        ("c", "Date of Appointment / Enrolment", h.get("doe")),
-        ("d", "Date of Retirement / Superannuation", h.get("retirement_date", "Still Serving"))
-    ]
-    r = 3
-    for mark, lbl, val in bio:
-        ws.cell(row=r, column=1, value=mark).alignment = Alignment(horizontal="center")
-        ws.cell(row=r, column=2, value=lbl)
-        ws.cell(row=r, column=3, value=val).alignment = Alignment(horizontal="left")
-        r += 1
+    # Row 1: Merged Heading across A1:E1
+    ws.merge_cells("A1:E1")
+    cell_h = ws["A1"]
+    cell_h.value = heading_text
+    cell_h.font = Font(name="Calibri", size=11, bold=True)
+    cell_h.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 24
+
+    # Rows 3+: Particulars Block (Matching Ilyas Sb layout)
+    particulars = build_particulars_rows(h)
+    curr_r = 3
+    for marker, milestone, dt_val in particulars:
+        c_m = ws.cell(row=curr_r, column=1, value=marker)
+        c_m.font = Font(name="Calibri", size=10, bold=True)
+        c_m.alignment = Alignment(horizontal="center", vertical="center")
+
+        c_lbl = ws.cell(row=curr_r, column=2, value=milestone)
+        c_lbl.font = Font(name="Calibri", size=10)
+        c_lbl.alignment = Alignment(horizontal="left", vertical="center")
+
+        ws.cell(row=curr_r, column=3, value="") # spacing
+
+        c_dt = ws.cell(row=curr_r, column=4, value=dt_val)
+        c_dt.font = Font(name="Calibri", size=10, bold=True)
+        c_dt.alignment = Alignment(horizontal="center", vertical="center")
+        curr_r += 1
 
     if data.get("special_instructions"):
-        r += 1
-        ws.cell(row=r, column=1, value="Note:")
-        ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=6)
-        ws.cell(row=r, column=2, value=f"Directives: {data['special_instructions']} (Audit Verification Required)").font = Font(italic=True, color="000080")
+        curr_r += 1
+        ws.cell(row=curr_r, column=1, value="Note:").font = Font(bold=True)
+        ws.merge_cells(start_row=curr_r, start_column=2, end_row=curr_r, end_column=5)
+        ws.cell(row=curr_r, column=2, value=data["special_instructions"]).font = Font(italic=True, color="000080")
 
-    r += 2
-    cols = ["Ser", "Date", "Pay Fixed (Rs.)", "Pay Scale", "Event & Details", "Statutory Rule / OM Reference"]
+    # Table Header Row (Ilyas Sb: Ser, Date, Pay Fixed, Pay Scale, Remarks)
+    curr_r += 2
+    cols = ["Ser", "Date", "Pay Fixed", "Pay Scale", "Remarks"]
     for ci, col in enumerate(cols, start=1):
-        cell = ws.cell(row=r, column=ci, value=col)
-        cell.font = Font(bold=True)
+        cell = ws.cell(row=curr_r, column=ci, value=col)
+        cell.font = Font(name="Calibri", size=10, bold=True)
         cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-        cell.alignment = Alignment(horizontal="center")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[curr_r].height = 20
 
-    border = Border(left=Side(style='thin', color='A6A6A6'), right=Side(style='thin', color='A6A6A6'),
-                    top=Side(style='thin', color='A6A6A6'), bottom=Side(style='thin', color='A6A6A6'))
-    r += 1
+    border_thin = Border(
+        left=Side(style='thin', color='A6A6A6'), right=Side(style='thin', color='A6A6A6'),
+        top=Side(style='thin', color='A6A6A6'), bottom=Side(style='thin', color='A6A6A6')
+    )
+
+    curr_r += 1
     for idx, row in enumerate(data["ledger"], start=1):
-        ws.cell(row=r, column=1, value=idx).alignment = Alignment(horizontal="center")
-        ws.cell(row=r, column=2, value=row["date"]).alignment = Alignment(horizontal="center")
-        ws.cell(row=r, column=3, value=row["pay"]).alignment = Alignment(horizontal="center")
-        ws.cell(row=r, column=4, value=row["scale"]).alignment = Alignment(horizontal="center")
-        ws.cell(row=r, column=5, value=row["remarks"])
-        ws.cell(row=r, column=6, value=row.get("authority", "—"))
-        for c in range(1, 7):
-            ws.cell(row=r, column=c).border = border
-        r += 1
+        c1 = ws.cell(row=curr_r, column=1, value=idx)
+        c2 = ws.cell(row=curr_r, column=2, value=row["date"])
+        c3 = ws.cell(row=curr_r, column=3, value=row["pay"])
+        c4 = ws.cell(row=curr_r, column=4, value=row["scale"])
+        c5 = ws.cell(row=curr_r, column=5, value=row["remarks"])
 
-    ws.column_dimensions['A'].width = 7
-    ws.column_dimensions['B'].width = 13
-    ws.column_dimensions['C'].width = 16
+        c1.alignment = Alignment(horizontal="center", vertical="center")
+        c2.alignment = Alignment(horizontal="center", vertical="center")
+        c3.alignment = Alignment(horizontal="center", vertical="center")
+        c4.alignment = Alignment(horizontal="center", vertical="center")
+        c5.alignment = Alignment(horizontal="left", vertical="center")
+
+        for c in [c1, c2, c3, c4, c5]:
+            c.font = Font(name="Calibri", size=10)
+            c.border = border_thin
+        curr_r += 1
+
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 14
+    ws.column_dimensions['C'].width = 14
     ws.column_dimensions['D'].width = 24
-    ws.column_dimensions['E'].width = 38
-    ws.column_dimensions['F'].width = 32
+    ws.column_dimensions['E'].width = 34
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -736,45 +789,70 @@ def generate_excel_bytes(data):
 def generate_word_bytes(data):
     doc = Document()
     h = data["header"]
+    heading_text = get_official_heading(h)
+
+    # Optional Header Logo
+    logo_path = get_logo_path()
+    if logo_path:
+        p_logo = doc.add_paragraph()
+        p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_logo.add_run().add_picture(logo_path, width=Inches(1.0))
+
+    # Heading
     p_title = doc.add_paragraph()
-    run = p_title.add_run(f"PAY FIXATION STATEMENT — {h.get('name','').upper()} ({h.get('fc_no','')})")
+    run = p_title.add_run(heading_text)
+    run.font.name = "Calibri"
     run.font.bold = True
-    run.font.size = Pt(12)
+    run.font.size = Pt(11)
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    bio_table = doc.add_table(rows=0, cols=3)
-    bio_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    def add_bio(mark, lbl, val):
-        r = bio_table.add_row().cells
-        r[0].text = mark
-        r[1].text = lbl
-        r[2].text = str(val) if val else "N/A"
-        r[0].width = Inches(0.5)
-        r[1].width = Inches(2.8)
-        r[2].width = Inches(2.4)
+    # Particulars Block
+    particulars = build_particulars_rows(h)
+    p_table = doc.add_table(rows=0, cols=3)
+    p_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    for marker, milestone, dt_val in particulars:
+        r_cells = p_table.add_row().cells
+        r_cells[0].text = marker
+        r_cells[1].text = milestone
+        r_cells[2].text = dt_val
 
-    add_bio("a.", "Cadre / Category", f"{h.get('category','Civil Servants')} [{h.get('chart_name','')}]")
-    add_bio("b.", "Service ID", h.get("fc_no"))
-    add_bio("c.", "Date of Entry / Enrolment", h.get("doe"))
-    add_bio("d.", "Date of Retirement", h.get("retirement_date", "Serving"))
+        r_cells[0].paragraphs[0].runs[0].font.name = "Calibri"
+        r_cells[0].paragraphs[0].runs[0].font.size = Pt(9.5)
+        r_cells[0].paragraphs[0].runs[0].font.bold = True
+
+        r_cells[1].paragraphs[0].runs[0].font.name = "Calibri"
+        r_cells[1].paragraphs[0].runs[0].font.size = Pt(9.5)
+
+        r_cells[2].paragraphs[0].runs[0].font.name = "Calibri"
+        r_cells[2].paragraphs[0].runs[0].font.size = Pt(9.5)
+        r_cells[2].paragraphs[0].runs[0].font.bold = True
+
+        r_cells[0].width = Inches(0.5)
+        r_cells[1].width = Inches(2.8)
+        r_cells[2].width = Inches(1.8)
 
     if data.get("special_instructions"):
         p_note = doc.add_paragraph()
-        r_note = p_note.add_run(f"\nSpecial Directives: {data['special_instructions']} (Cross-check with Service Book)")
+        r_note = p_note.add_run(f"\nNote: {data['special_instructions']}")
         r_note.font.italic = True
+        r_note.font.size = Pt(9)
         r_note.font.color.rgb = RGBColor(0, 32, 96)
 
     doc.add_paragraph().text = ""
-    table = doc.add_table(rows=1, cols=6)
+
+    # Ledger Table
+    table = doc.add_table(rows=1, cols=5)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.style = 'Table Grid'
     hdr_cells = table.rows[0].cells
-    cols = ["Ser", "Date", "Pay Fixed", "Pay Scale", "Event Details", "Authority / OM"]
+    cols = ["Ser", "Date", "Pay Fixed", "Pay Scale", "Remarks"]
     for i, title in enumerate(cols):
         hdr_cells[i].text = title
+        hdr_cells[i].paragraphs[0].runs[0].font.name = "Calibri"
         hdr_cells[i].paragraphs[0].runs[0].font.bold = True
-        shading = parse_xml(r'<w:shd {} w:fill="D9E1F2"/>'.format(nsdecls('w')))
-        hdr_cells[i]._tc.get_or_add_tcPr().append(shading)
+        hdr_cells[i].paragraphs[0].runs[0].font.size = Pt(9.5)
+        shd = parse_xml(r'<w:shd {} w:fill="D9E1F2"/>'.format(nsdecls('w')))
+        hdr_cells[i]._tc.get_or_add_tcPr().append(shd)
 
     for idx, row in enumerate(data["ledger"], start=1):
         row_cells = table.add_row().cells
@@ -783,9 +861,9 @@ def generate_word_bytes(data):
         row_cells[2].text = str(row["pay"])
         row_cells[3].text = str(row["scale"])
         row_cells[4].text = str(row["remarks"])
-        row_cells[5].text = str(row.get("authority", "—"))
         for c in row_cells:
-            c.paragraphs[0].runs[0].font.size = Pt(8.5)
+            c.paragraphs[0].runs[0].font.name = "Calibri"
+            c.paragraphs[0].runs[0].font.size = Pt(9.0)
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -793,57 +871,59 @@ def generate_word_bytes(data):
 
 def generate_pdf_bytes(data):
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=30, rightMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
     elements = []
 
     logo_path = get_logo_path()
     if logo_path:
-        elements.append(RLImage(logo_path, width=70, height=70))
+        elements.append(RLImage(logo_path, width=65, height=65))
         elements.append(Spacer(1, 4))
 
     h = data["header"]
-    title_text = f"<b>PAY FIXATION STATEMENT — {h.get('name','').upper()} ({h.get('fc_no','')})</b>"
-    elements.append(Paragraph(title_text, styles['Title']))
-    elements.append(Spacer(1, 6))
+    heading_text = f"<b>{get_official_heading(h)}</b>"
+    elements.append(Paragraph(heading_text, styles['Title']))
+    elements.append(Spacer(1, 8))
 
-    bio_data = [
-        ["a.", "Cadre / Category", f"{h.get('category','Civil Servants')} [{h.get('chart_name','')}]"],
-        ["b.", "Date of Entry / Enrolment", str(h.get("doe"))],
-        ["c.", "Date of Retirement / Superannuation", str(h.get("retirement_date", "Serving"))]
-    ]
-    t_bio = Table(bio_data, colWidths=[25, 210, 200])
-    t_bio.setStyle(TableStyle([
+    # Particulars Table
+    particulars = build_particulars_rows(h)
+    p_data = [[m, lbl, dt_val] for m, lbl, dt_val in particulars]
+    t_part = Table(p_data, colWidths=[25, 230, 140])
+    t_part.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
         ('FONTSIZE', (0,0), (-1,-1), 8.5),
+        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+        ('FONTNAME', (2,0), (2,-1), 'Helvetica-Bold'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
     ]))
-    elements.append(t_bio)
+    elements.append(t_part)
 
     if data.get("special_instructions"):
         elements.append(Spacer(1, 4))
-        elements.append(Paragraph(f"<i>Directives: {data['special_instructions']} (Verification Required)</i>", styles['Normal']))
+        elements.append(Paragraph(f"<i>Note: {data['special_instructions']}</i>", styles['Normal']))
 
-    elements.append(Spacer(1, 8))
+    elements.append(Spacer(1, 10))
 
-    tbl_data = [["Ser", "Date", "Pay Fixed", "Pay Scale", "Event & Details", "Statutory Rule / OM"]]
+    # Main Ledger Table
+    tbl_data = [["Ser", "Date", "Pay Fixed", "Pay Scale", "Remarks"]]
     for idx, row in enumerate(data["ledger"], start=1):
-        tbl_data.append([str(idx), str(row["date"]), str(row["pay"]), str(row["scale"]), str(row["remarks"]), str(row.get("authority", "—"))])
+        tbl_data.append([str(idx), str(row["date"]), str(row["pay"]), str(row["scale"]), str(row["remarks"])])
 
-    t_main = Table(tbl_data, colWidths=[24, 60, 60, 110, 160, 138])
+    t_main = Table(tbl_data, colWidths=[35, 75, 75, 135, 200])
     t_main.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#D9E1F2')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.black),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 8),
+        ('FONTSIZE', (0,0), (-1,0), 9),
         ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,1), (-1,-1), 7.5),
+        ('FONTSIZE', (0,1), (-1,-1), 8),
         ('ALIGN', (0,0), (3,-1), 'CENTER'),
-        ('ALIGN', (4,0), (5,-1), 'LEFT'),
+        ('ALIGN', (4,0), (4,-1), 'LEFT'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#A6A6A6')),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 2),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ('TOPPADDING', (0,0), (-1,-1), 2.5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
     ]))
     elements.append(t_main)
     doc.build(elements)
@@ -917,7 +997,7 @@ def main():
                         st.success("🎉 New standard successfully activated!")
                         st.rerun()
 
-    # Sidebar Duplicate (Available for power users)
+    # Sidebar duplicate for accessibility
     st.sidebar.header(f"📁 {target_category} Chart Status")
     st.sidebar.markdown(f"**Active:** `{cat_meta['filename']}`")
     st.sidebar.markdown(f"**Ranks:** {len(cat_meta['ranks'])}")
@@ -1010,7 +1090,7 @@ def main():
                                            min_value=MIN_APP_DATE, max_value=MAX_APP_DATE, key="upg_d").strftime("%Y-%m-%d")
                 with u_col2:
                     u_scale = st.selectbox("Upgraded to Scale", available_scales, index=min(13, len(available_scales)-1), key="upg_s")
-                upgradations.append({"date": u_date, "rank": u_scale, "authority": "Finance Division Upgradation OM"})
+                upgradations.append({"date": u_date, "rank": u_scale})
 
     # --------------------------------------------------------------------------
     # DEDICATED PROMINENT SPECIAL INSTRUCTIONS & DIRECTIVES PANEL
@@ -1078,12 +1158,29 @@ def main():
             for w in result["warnings"]:
                 st.warning(f"⚠️ {w}")
 
-        st.success(f"✅ Full chronological pay fixation calculated successfully for {target_category}!")
+        st.success(f"✅ Pay fixation statement prepared successfully!")
+
+        # ----------------------------------------------------------------------
+        # EXACT "ILYAS SB" FORMATTED DISPLAY IN UI
+        # ----------------------------------------------------------------------
+        official_title = get_official_heading(personnel_payload)
+        st.markdown(f"#### {official_title}")
+
+        particulars_data = build_particulars_rows(personnel_payload)
+        df_part = pd.DataFrame(particulars_data, columns=["Marker", "Milestone", "Date"])
+        st.table(df_part)
+
+        if final_special_instructions:
+            st.markdown(f"**Note:** *{final_special_instructions}*")
+
         df_ledger = pd.DataFrame(result["ledger"])
         df_ledger.index = df_ledger.index + 1
         st.dataframe(df_ledger, use_container_width=True)
 
-        st.markdown("### 📥 Download Formal Statements")
+        # ----------------------------------------------------------------------
+        # DOWNLOAD ACTION BAR
+        # ----------------------------------------------------------------------
+        st.markdown("### 📥 Download Formal Statements (Ilyas Sb Format)")
         dcol1, dcol2, dcol3 = st.columns(3)
 
         dcol1.download_button(
@@ -1105,6 +1202,7 @@ def main():
             mime="application/pdf"
         )
 
+        # Direct Sharing & QR Card
         st.markdown("---")
         sh_col1, sh_col2, sh_col3 = st.columns([1, 3, 2])
         with sh_col1:
