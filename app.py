@@ -25,7 +25,8 @@ from reportlab.lib.styles import getSampleStyleSheet
 MIN_APP_DATE = datetime.date(1990, 1, 1)
 MAX_APP_DATE = datetime.date(2030, 12, 31)
 
-# All BPS Scales 1 to 22 without any missing scale
+REGISTRY_SCHEMA_VERSION = "2026.11.v3_FULL_DEPTH"
+
 ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 23)]
 CAF_RANKS = ["NCs E", "GD Sep", "GD Lnk", "GD Nk", "GD Hav", "GD N/Sub", "Sub", "SM", "H/Lt", "H/Capt"]
 
@@ -34,7 +35,7 @@ REGISTRY_FILE = os.path.join(DATA_DIR, "chart_registry.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ==============================================================================
-# 0. ROBUST MULTI-PATH LOGO DISCOVERY
+# 0. LOGO DISCOVERY & SAFE RENDERING
 # ==============================================================================
 def get_logo_path():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +48,6 @@ def get_logo_path():
     for p in candidates:
         if os.path.exists(p) and os.path.isfile(p):
             return os.path.abspath(p)
-    # Search recursively in current repository folder
     for root, _, files in os.walk(base_dir):
         for f in files:
             if f.lower() == "logo.png":
@@ -82,15 +82,15 @@ DEFAULT_CIVIL_SCALES = {
     "BPS-22": {"1983-07-01":(4400,300,7400),"1987-07-01":(5750,390,9650),"1991-06-01":(7990,545,13440),"1994-06-01":(10790,735,18140),"2001-12-01":(17265,1175,29015),"2005-07-01":(19855,1350,33355),"2007-07-01":(22835,1550,38335),"2008-07-01":(27400,1860,46000),"2011-07-01":(43000,3050,73500),"2015-07-01":(55890,4005,87930),"2016-07-01":(68740,4920,108100),"2017-07-01":(82380,5870,129340),"2022-07-01":(122190,8710,191870),"2026-07-01":(146630,10450,230230)}
 }
 
-# Add single-digit aliases (BPS-1 -> BPS-01) for seamless compatibility
+# Add alias keys like "BPS-1" for "BPS-01"
 for i in range(1, 10):
-    k_double = f"BPS-{i:02d}"
-    k_single = f"BPS-{i}"
-    if k_double in DEFAULT_CIVIL_SCALES:
-        DEFAULT_CIVIL_SCALES[k_single] = DEFAULT_CIVIL_SCALES[k_double]
+    k_dbl = f"BPS-{i:02d}"
+    k_sng = f"BPS-{i}"
+    if k_dbl in DEFAULT_CIVIL_SCALES:
+        DEFAULT_CIVIL_SCALES[k_sng] = DEFAULT_CIVIL_SCALES[k_dbl]
 
 # ==============================================================================
-# 2. VERIFIED CAF SCALES & CITATIONS (1994 - 2026)
+# 2. VERIFIED CAF SCALES (1994 - 2026)
 # ==============================================================================
 BOOTSTRAP_CAF_SCALES = {
     "NCs E": {
@@ -135,6 +135,8 @@ DEFAULT_RECT_RATES = {
 }
 
 OFFICIAL_OM_REFERENCES = {
+    "1983-07-01": "Finance Div OM No. F.1(1)-Imp-I/83 (First Basic Pay Scale)",
+    "1987-07-01": "Finance Div OM No. F.1(1)-Imp/87",
     "1991-06-01": "Finance Div OM No. F.1(7)-Imp-II/91",
     "1994-06-01": "Finance Div OM No. F.1(2)-Imp/94(i)",
     "2001-12-01": "Finance Div OM No. F.1(5)-Imp/2001",
@@ -151,16 +153,22 @@ OFFICIAL_OM_REFERENCES = {
 }
 
 # ==============================================================================
-# 3. REGISTRY STORAGE & PERSISTENCE
+# 3. SELF-HEALING REGISTRY & FILE PERSISTENCE
 # ==============================================================================
 def load_registry():
+    reset_needed = False
     if os.path.exists(REGISTRY_FILE):
         try:
             with open(REGISTRY_FILE, "r") as f:
-                return json.load(f)
+                reg = json.load(f)
+                if reg.get("_version") == REGISTRY_SCHEMA_VERSION:
+                    return reg
         except Exception:
             pass
+
+    # Fresh initialize / upgrade
     reg = {
+        "_version": REGISTRY_SCHEMA_VERSION,
         "CAF": {
             "active": {
                 "filename": "Official_CAF_Pay_Scales_1994_2026.xlsx",
@@ -197,20 +205,33 @@ def save_category_data(category, scales, rect_rates, filename):
         json.dump({"scales": scales, "rect_rates": rect_rates}, f, indent=2)
 
 def load_category_data(category, filename):
+    base_scales = DEFAULT_CIVIL_SCALES if category == "Civil Servants" else BOOTSTRAP_CAF_SCALES
+    base_rect = {} if category == "Civil Servants" else DEFAULT_RECT_RATES
     path = os.path.join(DATA_DIR, filename)
+
     if os.path.exists(path):
         try:
             with open(path, "r") as f:
                 d = json.load(f)
-                return d.get("scales", {}), d.get("rect_rates", {})
+                disk_scales = d.get("scales", {})
+                disk_rect = d.get("rect_rates", {})
+                # Check if disk copy has full historical depth
+                if category == "Civil Servants":
+                    has_early = any("1983" in dt or "1994" in dt for sc_map in disk_scales.values() for dt in sc_map.keys())
+                    if has_early and len(disk_scales) >= 19:
+                        return disk_scales, disk_rect
+                else:
+                    if len(disk_scales) >= 8:
+                        return disk_scales, disk_rect
         except Exception:
             pass
-    if category == "Civil Servants":
-        return DEFAULT_CIVIL_SCALES, {}
-    return BOOTSTRAP_CAF_SCALES, DEFAULT_RECT_RATES
+
+    # Heal & overwrite with complete baseline
+    save_category_data(category, base_scales, base_rect, filename)
+    return base_scales, base_rect
 
 # ==============================================================================
-# 4. PARSER ENGINE FOR DYNAMIC CHART UPLOADS
+# 4. CHART PARSER ENGINE FOR LIVE UPLOADS
 # ==============================================================================
 def format_scale_str(sc):
     return f"{sc[0]}-{sc[1]}-{sc[2]}" if sc else ""
@@ -303,7 +324,7 @@ def parse_uploaded_chart(uploaded_file):
                     scales[norm_rk][dt] = sc
 
         if not scales:
-            return None, "No recognizable pay scale structures found."
+            return None, "No recognizable pay scale structures found in file."
 
         return {
             "scales": scales,
@@ -316,7 +337,7 @@ def parse_uploaded_chart(uploaded_file):
         return None, f"Parsing error: {str(e)}"
 
 # ==============================================================================
-# 5. CORE AUDITED PAY FIXATION ENGINE (CAF + CIVIL SERVANTS)
+# 5. CORE AUDITED CALCULATION ENGINE
 # ==============================================================================
 def get_scale_at_date(rank, target_date_str, scales_dict, rev_tag=None):
     norm_rk = normalize_rank_str(rank)
@@ -428,7 +449,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 "remarks": "Annual Increment (A/Inc)", "authority": "FR 24 / OM F.1(1)-Imp-I/77"
             })
 
-    # 7. Retirement Event (With Premature Increment Check)
+    # 7. Retirement Event
     if retirement_date and retirement_date <= end_date_str:
         ret_dt = datetime.datetime.strptime(retirement_date, "%Y-%m-%d").date()
         ret_mon = ret_dt.month
@@ -440,14 +461,12 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
             "authority": "CSR / OM F.3(4)R-2/2014-736 (21-09-2022)"
         })
 
-    # Sort Chronologically
     priority = {
         "ENROLLMENT": 0, "REMUSTERING": 1, "REVISION": 2, "UPGRADATION": 3,
         "PROMOTION": 4, "PAY_PROTECTION": 5, "ANNUAL_INCREMENT": 6, "RETIREMENT": 7
     }
     events.sort(key=lambda x: (x["date"], priority.get(x["type"], 9)))
 
-    # Calculation Execution Loop
     ledger = []
     current_pay = 0
     current_rank = enrol_rank
@@ -548,7 +567,6 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                     "remarks": "Revision (Audit Required)", "authority": ev.get("authority", "—")
                 })
 
-        # CRITICAL FIX: Graceful handling of both General Scale Upgradation & Post Upgradation
         elif ev_t == "UPGRADATION":
             target_rank = ev.get("rank", current_rank)
             new_sc = get_scale_at_date(target_rank, ev["date"], scales_dict, rev_tag=ev.get("rev_key"))
@@ -599,7 +617,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                         p_step = new_sc[0]
                         while p_step < current_pay:
                             p_step += new_sc[1]
-                        current_pay = p_step + new_sc[1]  # Next stage + 1 premature promotional increment
+                        current_pay = p_step + new_sc[1]  # Next stage + 1 promotional increment
                     current_scale = new_sc
                     substantive_scale = new_sc
                 last_change_dt = ev_dt
@@ -864,42 +882,48 @@ def main():
     cat_meta = registry[target_category]["active"]
 
     # --------------------------------------------------------------------------
-    # SIDEBAR: CHART STATUS & UPLOAD MANAGER
+    # PROMINENT CHART VAULT & UPLOAD (MAIN SCREEN + SIDEBAR)
     # --------------------------------------------------------------------------
+    with st.expander(f"📁 Pay Scale Chart Vault & Upload Manager — [{target_category}]", expanded=False):
+        c_v1, c_v2 = st.columns([2, 3])
+        with c_v1:
+            st.markdown(f"**Active Standard File:** `{cat_meta['filename']}`")
+            st.markdown(f"**Revision Epochs:** `{cat_meta['effective_years']}`")
+            st.markdown(f"**Ranks / Scales Covered:** {len(cat_meta['ranks'])}")
+        with c_v2:
+            up_chart = st.file_uploader(
+                f"Upload New / Revised {target_category} Chart (.xlsx, .csv)",
+                type=["xlsx", "xls", "csv"],
+                key="main_chart_uploader"
+            )
+            if up_chart is not None:
+                parsed_res, err = parse_uploaded_chart(up_chart)
+                if err:
+                    st.error(f"❌ {err}")
+                else:
+                    st.success(f"✅ Readable: {len(parsed_res['ranks'])} scales detected.")
+                    if st.button(f"Activate as New {target_category} Chart", type="primary", key="btn_act_main"):
+                        registry[target_category]["backup"] = cat_meta
+                        new_data_file = f"{target_category.lower().replace(' ', '_')}_active.json"
+                        save_category_data(target_category, parsed_res["scales"], parsed_res["rect_rates"], new_data_file)
+                        registry[target_category]["active"] = {
+                            "filename": up_chart.name,
+                            "approval_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "effective_years": parsed_res["effective_years"],
+                            "ranks": parsed_res["ranks"],
+                            "data_file": new_data_file
+                        }
+                        save_registry(registry)
+                        st.success("🎉 New standard successfully activated!")
+                        st.rerun()
+
+    # Sidebar Duplicate (Available for power users)
     st.sidebar.header(f"📁 {target_category} Chart Status")
-    st.sidebar.markdown(f"**Active File:** `{cat_meta['filename']}`")
-    st.sidebar.markdown(f"**Ranks Covered:** {len(cat_meta['ranks'])}")
-    st.sidebar.markdown(f"**Revision Epochs:** {cat_meta['effective_years']}")
-
-    uploaded_chart = st.sidebar.file_uploader(
-        f"Upload Revised {target_category} Chart (.xlsx, .csv)",
-        type=["xlsx", "xls", "csv"],
-        key="new_chart_uploader"
-    )
-
-    if uploaded_chart is not None:
-        parsed_res, err = parse_uploaded_chart(uploaded_chart)
-        if err:
-            st.sidebar.error(f"❌ {err}")
-        else:
-            st.sidebar.success(f"✅ Readable: {len(parsed_res['ranks'])} scales detected.")
-            if st.sidebar.button(f"Activate as New {target_category} Standard", type="primary"):
-                registry[target_category]["backup"] = cat_meta
-                new_data_file = f"{target_category.lower().replace(' ', '_')}_active.json"
-                save_category_data(target_category, parsed_res["scales"], parsed_res["rect_rates"], new_data_file)
-                registry[target_category]["active"] = {
-                    "filename": uploaded_chart.name,
-                    "approval_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "effective_years": parsed_res["effective_years"],
-                    "ranks": parsed_res["ranks"],
-                    "data_file": new_data_file
-                }
-                save_registry(registry)
-                st.sidebar.success("🎉 New standard successfully activated!")
-                st.rerun()
+    st.sidebar.markdown(f"**Active:** `{cat_meta['filename']}`")
+    st.sidebar.markdown(f"**Ranks:** {len(cat_meta['ranks'])}")
 
     # --------------------------------------------------------------------------
-    # INPUT SECTION: EMPLOYEE & SERVICE HISTORY
+    # INPUT SECTION: EMPLOYEE BIO & SERVICE DOSSIER
     # --------------------------------------------------------------------------
     active_scales, active_rect_rates = load_category_data(target_category, cat_meta["data_file"])
     available_scales = ALL_BPS_SCALES if is_civil else CAF_RANKS
@@ -911,7 +935,7 @@ def main():
         name = st.text_input("Officer / Employee Full Name", value="Muhammad Iqbal" if is_civil else "Jamal")
     with c2:
         enrol_rank = st.selectbox("Scale at Appointment / Joining", available_scales, index=0)
-        final_rank = st.selectbox("Current / Substantive Scale", available_scales, index=min(10, len(available_scales)-1) if is_civil else 5)
+        final_rank = st.selectbox("Current / Substantive Scale", available_scales, index=min(13, len(available_scales)-1) if is_civil else 5)
     with c3:
         qualification = "Matric"
         if not is_civil:
@@ -949,10 +973,10 @@ def main():
     p_num = st.number_input("Number of Promotions to Record", min_value=0, max_value=8, value=3 if is_civil else 4, step=1)
     promotions = []
     default_civil_p = [
-        (datetime.date(2001, 12, 1), "BPS-05"),
-        (datetime.date(2011, 7, 1), "BPS-11"),
-        (datetime.date(2017, 7, 1), "BPS-14"),
-        (datetime.date(2022, 7, 1), "BPS-16")
+        (datetime.date(1999, 3, 11), "BPS-09"),
+        (datetime.date(2010, 7, 1), "BPS-14"),
+        (datetime.date(2017, 7, 1), "BPS-16"),
+        (datetime.date(2022, 7, 1), "BPS-17")
     ]
     default_caf_p = [
         (datetime.date(2012, 3, 15), "GD Lnk"),
@@ -988,15 +1012,48 @@ def main():
                     u_scale = st.selectbox("Upgraded to Scale", available_scales, index=min(13, len(available_scales)-1), key="upg_s")
                 upgradations.append({"date": u_date, "rank": u_scale, "authority": "Finance Division Upgradation OM"})
 
-    # Directives
+    # --------------------------------------------------------------------------
+    # DEDICATED PROMINENT SPECIAL INSTRUCTIONS & DIRECTIVES PANEL
+    # --------------------------------------------------------------------------
     st.markdown("---")
-    st.subheader("📝 Official Directives & Notes")
-    special_instructions = st.text_input(
-        "Enter case-specific orders (e.g., '1 advance increment on Higher Qualification', 'Withheld increment', 'Protection of pay'):",
-        placeholder="Type official notification or directive here..."
+    st.subheader("📝 Official Directives, Special Instructions & Overrides")
+    st.caption("Apply authorized government benefits, qualification increments, or protected pay orders:")
+
+    sp_col1, sp_col2 = st.columns(2)
+    with sp_col1:
+        chk_adv_inc = st.checkbox("Advance Increment(s) on Higher Qualification", value=False)
+        chk_pay_prot = st.checkbox("Pay Protection Allowed (FR 22-B / Transfer)", value=False)
+    with sp_col2:
+        chk_withheld = st.checkbox("Annual Increment Withheld (Disciplinary / Inquiry)", value=False)
+        chk_pp = st.checkbox("Personal Pay (PP) Protection Granted", value=False)
+
+    user_notes = st.text_input(
+        "Directives & Notification References:",
+        placeholder="e.g. Granted 1 premature increment under notification F.1(2)/2015, Pay Protected w.e.f 01-07-2016...",
+        key="sp_notes_input"
     )
 
-    # Calculation Button
+    special_instructions_list = []
+    if chk_adv_inc:
+        special_instructions_list.append("Advance Increment on Higher Qualification Allowed")
+    if chk_pay_prot:
+        special_instructions_list.append("Pay Protection Granted under FR 22-B")
+    if chk_withheld:
+        special_instructions_list.append("Annual Increment Withheld for specified period")
+    if chk_pp:
+        special_instructions_list.append("Personal Pay (PP) Protected beyond scale ceiling")
+    if user_notes.strip():
+        special_instructions_list.append(user_notes.strip())
+
+    final_special_instructions = " | ".join(special_instructions_list)
+
+    if final_special_instructions:
+        st.info(f"📋 **Recorded Directives for Statement:** {final_special_instructions}")
+
+    # --------------------------------------------------------------------------
+    # CALCULATION & STATEMENT GENERATION
+    # --------------------------------------------------------------------------
+    st.markdown("---")
     if st.button("🚀 Calculate Pay Fixation Statement", type="primary"):
         personnel_payload = {
             "name": name,
@@ -1015,7 +1072,7 @@ def main():
             "chart_name": cat_meta["filename"]
         }
 
-        result = run_comprehensive_pay_fixation(personnel_payload, active_scales, active_rect_rates, special_instructions)
+        result = run_comprehensive_pay_fixation(personnel_payload, active_scales, active_rect_rates, final_special_instructions)
 
         if result.get("warnings"):
             for w in result["warnings"]:
@@ -1048,16 +1105,15 @@ def main():
             mime="application/pdf"
         )
 
-        # Sharing & Mobile QR Card
         st.markdown("---")
         sh_col1, sh_col2, sh_col3 = st.columns([1, 3, 2])
         with sh_col1:
             if logo_file:
                 st.image(logo_file, width=80)
         with sh_col2:
-            st.markdown("**Pay Fixation Agent — Direct Share**")
+            st.markdown("**Pay Fixation Agent — Direct Access & Share**")
             app_url = st.text_input("App / Repository Direct Link:", value="https://github.com", key="share_url")
-            st.markdown(f"🔗 **Link:** [{app_url}]({app_url})")
+            st.markdown(f"🔗 **Direct Link:** [{app_url}]({app_url})")
         with sh_col3:
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={app_url}"
             st.image(qr_url, caption="Scan QR to open app", width=120)
