@@ -24,11 +24,28 @@ from reportlab.lib.styles import getSampleStyleSheet
 MIN_APP_DATE = datetime.date(1990, 1, 1)
 MAX_APP_DATE = datetime.date(2030, 12, 31)
 
-REGISTRY_SCHEMA_VERSION = "2026.11.v7_SIMPLIFIED_CAF_AND_TECH_HAV_2026"
+REGISTRY_SCHEMA_VERSION = "2026.11.v8_AUTO_CADRE_UPGRADATION_RESTORED"
 
 ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 23)]
 CAF_GD_RANKS = ["GD Sep", "GD Lnk", "GD Nk", "GD Hav", "GD N/Sub", "Sub", "SM", "H/Lt", "H/Capt"]
 CAF_TECH_RANKS = ["Tech Sep", "Tech Lnk", "Tech Nk", "Tech Hav"]
+
+CIVIL_COMMON_POSTS = [
+    "Junior Clerk (LDC)",
+    "Senior Clerk (UDC)",
+    "Assistant",
+    "Superintendent",
+    "Stenotypist",
+    "Assistant Private Secretary (APS)",
+    "Private Secretary (PS)",
+    "Junior Auditor",
+    "Senior Auditor",
+    "Naib Qasid",
+    "Daftary",
+    "Record Sorter",
+    "Driver",
+    "Custom / Other Designation"
+]
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 REGISTRY_FILE = os.path.join(DATA_DIR, "chart_registry.json")
@@ -106,7 +123,7 @@ for i in range(1, 10):
         DEFAULT_CIVIL_SCALES[k_sng] = DEFAULT_CIVIL_SCALES[k_dbl]
 
 # ==============================================================================
-# 2. VERIFIED CAF SCALES (INCLUDING NEW 2026 TECH HAV AMENDMENT)
+# 2. VERIFIED CAF SCALES (INCLUDING NEW 2026 TECH HAV AMENDMENT: 25880-1810-80180)
 # ==============================================================================
 BOOTSTRAP_CAF_SCALES = {
     "NCs E": {
@@ -133,7 +150,6 @@ BOOTSTRAP_CAF_SCALES = {
     "GD Hav": {
         "1994-06-01":(1440,73,2535),"2001-12-01":(2160,110,5460),"2005-07-01_REV":(2485,125,6235),"2005-07-01_UPG":(2655,150,7155),"2007-07-01":(3055,175,8305),"2008-07-01":(3665,210,9965),"2011-07-01":(5900,350,16400),"2015-07-01":(7630,452,21190),"2016-07-01":(9390,560,26190),"2017-07-01":(11225,665,31175),"2022-07-01":(16660,990,46360),"2024-06-01":(20140,1240,57340),"2026-07-01":(24210,1500,69210)
     },
-    # VERIFIED AMENDMENT: Tech Hav 2026 included from updated chart (25880-1810-80180)
     "Tech Hav": {
         "1994-06-01":(1605,97,3060),"2001-12-01":(2410,145,6760),"2005-07-01_REV":(2770,165,7720),"2007-07-01":(3185,190,8885),"2008-07-01":(3825,230,10725),"2011-07-01":(6200,380,17600),"2015-07-01":(8015,495,22865),"2016-07-01":(9860,610,28160),"2017-07-01":(11775,725,26275),"2022-07-01":(17480,1080,39080),"2024-06-01":(21530,1500,66530),"2026-07-01":(25880,1810,80180)
     },
@@ -181,7 +197,7 @@ def load_registry():
         "CAF": {
             "active": {
                 "filename": "Official_CAF_Pay_Scales_1994_2026_TechHav.xlsx",
-                "approval_date": "2026-11-01 00:00:00",
+                "approval_date": "2026-11-03 00:00:00",
                 "effective_years": [1994, 2001, 2005, 2007, 2008, 2011, 2015, 2016, 2017, 2022, 2024, 2026],
                 "ranks": list(BOOTSTRAP_CAF_SCALES.keys()),
                 "data_file": "caf_active.json"
@@ -191,7 +207,7 @@ def load_registry():
         "Civil Servants": {
             "active": {
                 "filename": "Official_Federal_Civil_Servants_BPS_1983_2026_Corrected.csv",
-                "approval_date": "2026-11-01 00:00:00",
+                "approval_date": "2026-11-03 00:00:00",
                 "effective_years": [1983, 1987, 1991, 1994, 2001, 2005, 2007, 2008, 2011, 2015, 2016, 2017, 2022, 2026],
                 "ranks": ALL_BPS_SCALES,
                 "data_file": "civil_active.json"
@@ -225,7 +241,6 @@ def load_category_data(category, filename):
                 disk_scales = d.get("scales", {})
                 disk_rect = d.get("rect_rates", {})
                 if category == "CAF":
-                    # Ensure Tech Hav 2026 scale (25880-1810-80180) exists
                     if disk_scales.get("Tech Hav", {}).get("2026-07-01", (0,0,0))[0] == 25880:
                         return disk_scales, disk_rect
                 else:
@@ -344,7 +359,223 @@ def parse_uploaded_chart(uploaded_file):
         return None, f"Parsing error: {str(e)}"
 
 # ==============================================================================
-# 5. CORE AUDITED CALCULATION ENGINE
+# 5. RESTORED & EXTENDED CADRE POST UP-GRADATION ENGINE (CIVIL SERVANTS ONLY)
+# ==============================================================================
+FEDERAL_CADRE_RULES = [
+    {
+        "pattern": r"(junior\s*clerk|ldc|lower\s*division\s*clerk|jc\b)",
+        "designation": "Junior Clerk",
+        "upgradations": [
+            ("2007-07-01", "BPS-07", "Finance Div OM No. 6(4)R-1/2006 (01-07-2007)"),
+            ("2016-07-01", "BPS-09", "Finance Div OM No. 9(7)R-1/2014-515/2016 (01-07-2016)"),
+            ("2023-01-01", "BPS-11", "Finance Div OM No. 9(7)R-1/2014-62/2023 (01-01-2023)")
+        ],
+        "historical_initial": [
+            ("2023-01-01", "BPS-11"),
+            ("2016-07-01", "BPS-09"),
+            ("2007-07-01", "BPS-07"),
+            ("1983-01-01", "BPS-05")
+        ]
+    },
+    {
+        "pattern": r"(senior\s*clerk|udc|upper\s*division\s*clerk|sc\b)",
+        "designation": "Senior Clerk",
+        "upgradations": [
+            ("2007-07-01", "BPS-09", "Finance Div OM No. 6(4)R-1/2006 (01-07-2007)"),
+            ("2016-07-01", "BPS-11", "Finance Div OM No. 9(7)R-1/2014-515/2016 (01-07-2016)"),
+            ("2023-01-01", "BPS-13", "Finance Div OM No. 9(7)R-1/2014-62/2023 (01-01-2023)")
+        ],
+        "historical_initial": [
+            ("2023-01-01", "BPS-13"),
+            ("2016-07-01", "BPS-11"),
+            ("2007-07-01", "BPS-09"),
+            ("1983-01-01", "BPS-07")
+        ]
+    },
+    {
+        "pattern": r"(assistant(?!\s*private)|head\s*clerk)",
+        "designation": "Assistant",
+        "upgradations": [
+            ("2007-07-01", "BPS-14", "Finance Div OM No. 6(4)R-1/2006 (01-07-2007)"),
+            ("2016-07-01", "BPS-16", "Finance Div OM No. 9(7)R-1/2014-515/2016 (01-07-2016)")
+        ],
+        "historical_initial": [
+            ("2016-07-01", "BPS-16"),
+            ("2007-07-01", "BPS-14"),
+            ("1983-01-01", "BPS-11")
+        ]
+    },
+    {
+        "pattern": r"(superintendent)",
+        "designation": "Superintendent",
+        "upgradations": [
+            ("2007-07-01", "BPS-16", "Finance Div OM No. 6(4)R-1/2006 (01-07-2007)"),
+            ("2016-07-01", "BPS-17", "Finance Div OM No. 9(7)R-1/2014-515/2016 (01-07-2016)")
+        ],
+        "historical_initial": [
+            ("2016-07-01", "BPS-17"),
+            ("2007-07-01", "BPS-16"),
+            ("1983-01-01", "BPS-14")
+        ]
+    },
+    {
+        "pattern": r"(stenotypist)",
+        "designation": "Stenotypist",
+        "upgradations": [
+            ("2011-12-23", "BPS-14", "Finance Div OM No. 1(29)R-I/2010 (23-12-2011)")
+        ],
+        "historical_initial": [
+            ("2011-12-23", "BPS-14"),
+            ("1983-01-01", "BPS-12")
+        ]
+    },
+    {
+        "pattern": r"(stenographer|assistant\s*private\s*secretary|aps\b)",
+        "designation": "Assistant Private Secretary",
+        "upgradations": [
+            ("2011-12-23", "BPS-16", "Finance Div OM No. 1(29)R-I/2010 (23-12-2011)")
+        ],
+        "historical_initial": [
+            ("2011-12-23", "BPS-16"),
+            ("1983-01-01", "BPS-15")
+        ]
+    },
+    {
+        "pattern": r"(junior\s*auditor)",
+        "designation": "Junior Auditor",
+        "upgradations": [
+            ("2016-07-01", "BPS-11", "Finance Div OM No. 9(7)R-1/2014-515/2016 (01-07-2016)")
+        ],
+        "historical_initial": [
+            ("2016-07-01", "BPS-11"),
+            ("1983-01-01", "BPS-07")
+        ]
+    },
+    {
+        "pattern": r"(senior\s*auditor)",
+        "designation": "Senior Auditor",
+        "upgradations": [
+            ("2016-07-01", "BPS-16", "Finance Div OM No. 9(7)R-1/2014-515/2016 (01-07-2016)")
+        ],
+        "historical_initial": [
+            ("2016-07-01", "BPS-16"),
+            ("1983-01-01", "BPS-11")
+        ]
+    },
+    {
+        "pattern": r"(daftary)",
+        "designation": "Daftary",
+        "upgradations": [
+            ("2007-07-01", "BPS-02", "Finance Div OM 2007"),
+            ("2016-07-01", "BPS-03", "Finance Div OM 2016")
+        ],
+        "historical_initial": [
+            ("2016-07-01", "BPS-03"),
+            ("2007-07-01", "BPS-02"),
+            ("1983-01-01", "BPS-01")
+        ]
+    },
+    {
+        "pattern": r"(record\s*sorter)",
+        "designation": "Record Sorter",
+        "upgradations": [
+            ("2007-07-01", "BPS-03", "Finance Div OM 2007"),
+            ("2016-07-01", "BPS-04", "Finance Div OM 2016")
+        ],
+        "historical_initial": [
+            ("2016-07-01", "BPS-04"),
+            ("2007-07-01", "BPS-03"),
+            ("1983-01-01", "BPS-02")
+        ]
+    }
+]
+
+def get_automatic_scale_for_civil_post(post_name, effective_date_str):
+    if not post_name:
+        return None
+    p_lower = str(post_name).strip().lower()
+    for rule in FEDERAL_CADRE_RULES:
+        if re.search(rule["pattern"], p_lower):
+            for cut_date, scale_code in rule["historical_initial"]:
+                if effective_date_str >= cut_date:
+                    return scale_code
+    return None
+
+def resolve_civil_servant_cadre_history(personnel, raw_upgradations):
+    auto_upgrades = list(raw_upgradations)
+    seen_events = {f"{u.get('date')}_{normalize_rank_str(u.get('rank'))}" for u in auto_upgrades}
+
+    doe = personnel.get("doe")
+    end_date = personnel.get("retirement_date") if personnel.get("retirement_date") else personnel.get("end_date", "2030-12-31")
+
+    # Build sequential post tenure timeline
+    tenures = []
+    
+    # 1. Enrolment post
+    enrol_post = personnel.get("enrol_post", "")
+    enrol_scale = personnel.get("enrol_rank", "BPS-01")
+    tenures.append({"date": doe, "post": enrol_post, "scale": enrol_scale})
+
+    # 2. Remustering post
+    if personnel.get("d_remust"):
+        tenures.append({
+            "date": personnel.get("d_remust"),
+            "post": personnel.get("remust_post", "GD Sepoy"),
+            "scale": personnel.get("remust_rank", "BPS-05")
+        })
+
+    # 3. Lateral Transfers
+    for t in personnel.get("transfers", []):
+        if t.get("date"):
+            tenures.append({
+                "date": t.get("date"),
+                "post": t.get("post_designation", "Transferred Post"),
+                "scale": t.get("rank", "BPS-05")
+            })
+
+    # 4. Promotions
+    for p in personnel.get("promotions", []):
+        if p.get("date"):
+            p_post = p.get("post_designation", "")
+            # Automatically assign historical scale if user left default or generic
+            auto_sc = get_automatic_scale_for_civil_post(p_post, p.get("date"))
+            assigned_scale = auto_sc if auto_sc else p.get("rank", "BPS-07")
+            p["rank"] = assigned_scale
+            tenures.append({
+                "date": p.get("date"),
+                "post": p_post,
+                "scale": assigned_scale
+            })
+
+    # Sort tenures chronologically
+    tenures.sort(key=lambda x: str(x["date"]))
+
+    # Scan tenures for automatic cadre upgradations
+    for idx, tenure in enumerate(tenures):
+        start_dt = str(tenure["date"])
+        next_dt = str(tenures[idx+1]["date"]) if idx+1 < len(tenures) else str(end_date)
+        post_str = str(tenure["post"]).strip().lower()
+
+        for rule in FEDERAL_CADRE_RULES:
+            if re.search(rule["pattern"], post_str):
+                for upg_date, upg_scale, upg_auth in rule["upgradations"]:
+                    # If upgradation occurred during tenure in this post
+                    if start_dt <= upg_date <= next_dt:
+                        event_key = f"{upg_date}_{upg_scale}"
+                        if event_key not in seen_events:
+                            auto_upgrades.append({
+                                "date": upg_date,
+                                "rank": upg_scale,
+                                "designation": rule["designation"],
+                                "authority": upg_auth,
+                                "remarks": f"Upgraded as {rule['designation']} ({upg_scale})"
+                            })
+                            seen_events.add(event_key)
+
+    return sorted(auto_upgrades, key=lambda x: str(x["date"]))
+
+# ==============================================================================
+# 6. CORE AUDITED CALCULATION ENGINE
 # ==============================================================================
 def get_scale_at_date(rank, target_date_str, scales_dict, rev_tag=None):
     norm_rk = normalize_rank_str(rank)
@@ -377,9 +608,15 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     remust_rank = normalize_rank_str(personnel.get("remust_rank", "GD Sep"))
     promotions = personnel.get("promotions", [])
     transfers = personnel.get("transfers", [])
-    upgradations = personnel.get("upgradations", [])
+    raw_upgradations = personnel.get("upgradations", [])
     retirement_date = personnel.get("retirement_date")
     end_date_str = retirement_date if retirement_date else personnel.get("end_date", "2030-12-31")
+
+    # RESTORED AUTOMATIC CADRE UP-GRADATION DISCOVERY (CIVIL SERVANTS ONLY)
+    if category == "Civil Servants":
+        upgradations = resolve_civil_servant_cadre_history(personnel, raw_upgradations)
+    else:
+        upgradations = list(raw_upgradations)
 
     warnings = []
     events = []
@@ -388,7 +625,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     if category == "Civil Servants" or enrol_rank.startswith("BPS"):
         events.append({
             "date": doe, "type": "ENROLLMENT", "rank": enrol_rank,
-            "remarks": f"Appointed as {enrol_post} ({enrol_rank})"
+            "remarks": "Appointed as GD Recruit Metric" if "recruit" in enrol_post.lower() else f"Appointed as {enrol_post}"
         })
     elif enrol_rank == "NCs E":
         events.append({
@@ -398,12 +635,12 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     else:
         events.append({
             "date": doe, "type": "ENROLLMENT", "rank": "GD Rect",
-            "remarks": f"Enrolled as GD Rect"
+            "remarks": "Enrolled as GD Rect"
         })
 
-    # 2. Remustering (Regular Combatant)
+    # 2. Remustering
     if d_remust and d_remust <= end_date_str:
-        rem_label = "Remustered as train sldr" if category == "CAF" else "Remustered"
+        rem_label = "Remustered as GD Sepoy" if category == "Civil Servants" else "Remustered as train sldr"
         events.append({
             "date": d_remust, "type": "REMUSTERING", "rank": remust_rank,
             "remarks": rem_label
@@ -419,946 +656,18 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 "remarks": f"Transferred as {t_post}"
             })
 
-    # 4. Promotions / Scale Movements
+    # 4. Promotions
     for p in promotions:
         if p.get("date") and p["date"] <= end_date_str:
             p_rk = normalize_rank_str(p["rank"])
-            rem = f"Pmtd {p_rk.replace('GD ', '')}" if category == "CAF" else f"Pmtd {p_rk}"
+            p_post = p.get("post_designation", p_rk)
+            rem = f"Pmtd {p_post} ({p_rk})" if category == "Civil Servants" else f"Pmtd {p_rk.replace('GD ', '')}"
             events.append({
                 "date": p["date"], "type": "PROMOTION", "rank": p_rk,
                 "remarks": rem
             })
 
-    # 5. Up-gradations (NCsE / Civil Servants)
+    # 5. Up-gradations
     for u in upgradations:
         if u.get("date") and u["date"] <= end_date_str:
             u_rk = normalize_rank_str(u["rank"])
-            events.append({
-                "date": u["date"], "type": "UPGRADATION", "rank": u_rk,
-                "remarks": u.get("remarks", f"Upgraded to {u_rk}")
-            })
-
-    # 6. Revisions
-    active_revisions = set()
-    for rk, dt_dict in scales_dict.items():
-        for d_key in dt_dict.keys():
-            active_revisions.add(d_key)
-
-    for r_key in sorted(list(active_revisions)):
-        r_dt = r_key.split("_")[0]
-        r_type = "UPGRADATION" if "UPG" in r_key else "REVISION"
-        rem_str = "Upgradation" if "UPG" in r_key else "Revision"
-        if doe <= r_dt <= end_date_str:
-            events.append({
-                "date": r_dt, "type": r_type, "rev_key": r_key,
-                "remarks": rem_str
-            })
-
-    # 7. Annual Increments
-    start_year = datetime.datetime.strptime(doe, "%Y-%m-%d").year
-    end_year = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").year
-    for y in range(start_year, end_year + 1):
-        inc_dt = f"{y}-12-01"
-        if doe <= inc_dt <= end_date_str:
-            events.append({
-                "date": inc_dt, "type": "ANNUAL_INCREMENT",
-                "remarks": "A/Inc"
-            })
-
-    # 8. Retirement Event
-    if retirement_date and retirement_date <= end_date_str:
-        ret_dt = datetime.datetime.strptime(retirement_date, "%Y-%m-%d").date()
-        ret_mon = ret_dt.month
-        entitled_ret_inc = (6 <= ret_mon <= 11)
-        events.append({
-            "date": retirement_date, "type": "RETIREMENT",
-            "entitled_increment": entitled_ret_inc,
-            "remarks": "Retirement"
-        })
-
-    priority = {
-        "ENROLLMENT": 0, "REMUSTERING": 1, "PAY_PROTECTION": 2, "REVISION": 3,
-        "UPGRADATION": 4, "PROMOTION": 5, "ANNUAL_INCREMENT": 6, "RETIREMENT": 7
-    }
-    events.sort(key=lambda x: (x["date"], priority.get(x["type"], 9)))
-
-    ledger = []
-    current_pay = 0
-    current_rank = enrol_rank
-    current_scale = None
-    substantive_scale = None
-    last_change_dt = None
-    personal_pay = 0
-
-    for ev in events:
-        ev_dt = datetime.datetime.strptime(ev["date"], "%Y-%m-%d").date()
-        ev_t = ev["type"]
-
-        if ev_t == "ENROLLMENT":
-            if category == "Civil Servants" or enrol_rank.startswith("BPS") or enrol_rank == "NCs E":
-                current_scale = get_scale_at_date(enrol_rank, ev["date"], scales_dict)
-                substantive_scale = current_scale
-                current_pay = current_scale[0] if current_scale else 0
-                last_change_dt = ev_dt
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Enrolled as NCs E")
-                })
-            else:
-                rates = rect_rates.get(qualification, [])
-                rect_pay = next((r[1] for r in reversed(rates) if r[0] <= ev["date"]), None)
-                current_scale = get_scale_at_date(enrol_rank, ev["date"], scales_dict)
-                substantive_scale = current_scale
-                current_pay = rect_pay if rect_pay else (current_scale[0] if current_scale else 2128)
-                last_change_dt = ev_dt
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": "Fixed" if category != "CAF" else "", "remarks": ev.get("remarks", "Enrolled as GD Rect")
-                })
-
-        elif ev_t == "REMUSTERING":
-            current_rank = ev["rank"]
-            current_scale = get_scale_at_date(current_rank, ev["date"], scales_dict)
-            substantive_scale = current_scale
-            current_pay = current_scale[0] if current_scale else "Review Req"
-            last_change_dt = ev_dt
-            ledger.append({
-                "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                "scale": format_scale_str(current_scale), "remarks": ev.get("remarks", "Remustered as train sldr")
-            })
-
-        elif ev_t == "PAY_PROTECTION":
-            target_rank = ev["rank"]
-            new_sc = get_scale_at_date(target_rank, ev["date"], scales_dict)
-            current_rank = target_rank
-            if new_sc:
-                current_scale = new_sc
-                substantive_scale = new_sc
-            last_change_dt = ev_dt
-            ledger.append({
-                "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                "scale": format_scale_str(current_scale) if current_scale else '"',
-                "remarks": ev.get("remarks", f"Transferred as {target_rank}")
-            })
-
-        elif ev_t == "ANNUAL_INCREMENT":
-            if not isinstance(current_pay, (int, float)):
-                ledger.append({"date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"', "remarks": "HOLD — Scale Unresolved"})
-                continue
-            days_served = (ev_dt - last_change_dt).days if last_change_dt else 365
-            if days_served < 180:
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
-                    "remarks": "Not entitled"
-                })
-            else:
-                active_inc = substantive_scale[1] if substantive_scale else (current_scale[1] if current_scale else 0)
-                if current_scale and current_pay + active_inc > current_scale[2]:
-                    personal_pay += active_inc
-                    ledger.append({
-                        "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
-                        "remarks": f"At Ceiling (Rs. {personal_pay} PP)"
-                    })
-                else:
-                    current_pay += active_inc
-                    ledger.append({
-                        "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
-                        "remarks": "A/Inc"
-                    })
-
-        elif ev_t == "REVISION":
-            active_rank = current_rank
-            if active_rank in ["H/Lt", "H/Capt"]:
-                active_rank = "SM" if "SM" in scales_dict else "Sub"
-            new_sc = get_scale_at_date(active_rank, ev["date"], scales_dict, rev_tag=ev.get("rev_key"))
-            if new_sc and current_scale and isinstance(current_pay, (int, float)):
-                stages = (current_pay - current_scale[0]) // current_scale[1]
-                current_pay = new_sc[0] + (stages * new_sc[1])
-                current_scale = new_sc
-                substantive_scale = new_sc
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": "Revision"
-                })
-            else:
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(new_sc) if new_sc else "Missing Scale",
-                    "remarks": "Revision"
-                })
-
-        elif ev_t == "UPGRADATION":
-            target_rank = ev.get("rank", current_rank)
-            new_sc = get_scale_at_date(target_rank, ev["date"], scales_dict, rev_tag=ev.get("rev_key"))
-            if new_sc and isinstance(current_pay, (int, float)):
-                p_step = new_sc[0]
-                while p_step < current_pay:
-                    p_step += new_sc[1]
-
-                # Finance Division OM dated 31-05-2013 (Premature Increment on Upgradation from 28-01-2002)
-                is_eligible_om_2013 = (ev["date"] >= "2002-01-28" and not ev.get("rev_key"))
-                if is_eligible_om_2013:
-                    current_pay = p_step + new_sc[1]
-                else:
-                    current_pay = p_step
-
-                current_scale = new_sc
-                substantive_scale = new_sc
-                current_rank = target_rank
-                last_change_dt = ev_dt
-                remarks_text = ev.get("remarks") if ev.get("remarks") else f"Upgraded to {current_rank}"
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": remarks_text
-                })
-            else:
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(new_sc) if new_sc else "Missing Scale",
-                    "remarks": "Upgradation"
-                })
-
-        elif ev_t == "PROMOTION":
-            target_rank = ev.get("rank", current_rank)
-            if target_rank in ["H/Lt", "H/Capt"]:
-                sm_scale = get_scale_at_date("SM", ev["date"], scales_dict)
-                honorary_inc = sm_scale[1] if sm_scale else 0
-                if isinstance(current_pay, (int, float)):
-                    current_pay += honorary_inc
-                last_change_dt = ev_dt
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(substantive_scale) if substantive_scale else '"',
-                    "remarks": f"1 x adv inc on prom as {target_rank}"
-                })
-            else:
-                current_rank = target_rank
-                new_sc = get_scale_at_date(current_rank, ev["date"], scales_dict)
-                if not new_sc:
-                    warnings.append(f"HOLD: Scale missing for {current_rank} on {ev['date']}.")
-                    current_pay = "Review Req"
-                else:
-                    if isinstance(current_pay, (int, float)):
-                        p_step = new_sc[0]
-                        while p_step < current_pay:
-                            p_step += new_sc[1]
-                        current_pay = p_step + new_sc[1]
-                    current_scale = new_sc
-                    substantive_scale = new_sc
-                last_change_dt = ev_dt
-                remarks_str = ev.get("remarks") if ev.get("remarks") else f"Pmtd {current_rank.replace('GD ', '')}"
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale), "remarks": remarks_str
-                })
-
-        elif ev_t == "RETIREMENT":
-            final_pension_pay = current_pay
-            if ev.get("entitled_increment") and isinstance(current_pay, (int, float)):
-                ret_inc = current_scale[1] if current_scale else 0
-                final_pension_pay += ret_inc
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": final_pension_pay,
-                    "scale": format_scale_str(current_scale),
-                    "remarks": "Usual Increment on retirement"
-                })
-            else:
-                ledger.append({
-                    "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay,
-                    "scale": format_scale_str(current_scale),
-                    "remarks": "Retirement"
-                })
-
-    return {
-        "header": personnel, "ledger": ledger,
-        "special_instructions": special_instructions, "warnings": warnings,
-        "personal_pay": personal_pay
-    }
-
-# ==============================================================================
-# 6. EXACT "ILYAS SB" REPORT GENERATORS (EXCEL, WORD, PDF)
-# ==============================================================================
-def get_official_heading(h):
-    fc_no = str(h.get('fc_no', '')).strip()
-    rank = str(h.get('rank', '')).strip()
-    name = str(h.get('name', '')).strip().upper()
-    return f"PAY FIXATION IRO OF FC / PERSONAL {fc_no}, Rank/Designation {rank} and Name {name}"
-
-def build_particulars_rows(h):
-    rows = []
-    is_caf = (h.get("category") == "CAF")
-    lbl_enrol = "D.O E" if is_caf else f"D.O.Appointment as {h.get('enrol_post', 'Civil Servant')}"
-    rows.append(("a", lbl_enrol, to_display_date(h.get("doe"))))
-
-    marker_idx = 1
-    letters = ["b.", "c.", "d.", "e.", "f.", "g.", "h.", "i.", "j.", "k.", "l.", "m."]
-
-    if is_caf and h.get("d_remust"):
-        m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
-        rows.append((m, "D.O.Remustration", to_display_date(h.get("d_remust"))))
-        marker_idx += 1
-
-    for t in h.get("transfers", []):
-        t_p = t.get("post_designation", "Transferred Post")
-        t_dt = to_display_date(t.get("date", ""))
-        m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
-        rows.append((m, f"D.O.Transfer as {t_p}", t_dt))
-        marker_idx += 1
-
-    timeline_events = []
-    for p in h.get("promotions", []):
-        p_rk = str(p.get("rank", "")).replace("GD ", "")
-        timeline_events.append((p.get("date"), f"D.O.Promotion as {p_rk}"))
-    for u in h.get("upgradations", []):
-        u_rk = str(u.get("rank", "")).replace("GD ", "")
-        timeline_events.append((u.get("date"), f"D.O.Upgradation as {u_rk}"))
-
-    timeline_events.sort(key=lambda x: str(x[0]))
-    for ev_dt, ev_lbl in timeline_events:
-        m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
-        rows.append((m, ev_lbl, to_display_date(ev_dt)))
-        marker_idx += 1
-
-    if h.get("retirement_date"):
-        m = letters[marker_idx] if marker_idx < len(letters) else f"{marker_idx+1}."
-        rows.append((m, "D.O.Retirement", to_display_date(h.get("retirement_date"))))
-        marker_idx += 1
-
-    return rows
-
-def generate_excel_bytes(data):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "PAY FIXATION"
-    ws.views.sheetView[0].showGridLines = True
-
-    h = data["header"]
-    heading_text = get_official_heading(h)
-
-    ws.merge_cells("A1:E1")
-    cell_h = ws["A1"]
-    cell_h.value = heading_text
-    cell_h.font = Font(name="Calibri", size=11, bold=True)
-    cell_h.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[1].height = 24
-
-    particulars = build_particulars_rows(h)
-    curr_r = 3
-    for marker, milestone, dt_val in particulars:
-        c_m = ws.cell(row=curr_r, column=1, value=marker)
-        c_m.font = Font(name="Calibri", size=10, bold=True)
-        c_m.alignment = Alignment(horizontal="center", vertical="center")
-
-        c_lbl = ws.cell(row=curr_r, column=2, value=milestone)
-        c_lbl.font = Font(name="Calibri", size=10)
-        c_lbl.alignment = Alignment(horizontal="left", vertical="center")
-
-        ws.cell(row=curr_r, column=3, value="")
-
-        c_dt = ws.cell(row=curr_r, column=4, value=dt_val)
-        c_dt.font = Font(name="Calibri", size=10, bold=True)
-        c_dt.alignment = Alignment(horizontal="center", vertical="center")
-        curr_r += 1
-
-    if data.get("special_instructions"):
-        curr_r += 1
-        ws.cell(row=curr_r, column=1, value="Note:").font = Font(bold=True)
-        ws.merge_cells(start_row=curr_r, start_column=2, end_row=curr_r, end_column=5)
-        ws.cell(row=curr_r, column=2, value=data["special_instructions"]).font = Font(italic=True, color="000080")
-
-    curr_r += 2
-    cols = ["Ser", "Date", "Pay Fixed", "Pay Scale", "Remarks"]
-    for ci, col in enumerate(cols, start=1):
-        cell = ws.cell(row=curr_r, column=ci, value=col)
-        cell.font = Font(name="Calibri", size=10, bold=True)
-        cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[curr_r].height = 20
-
-    border_thin = Border(
-        left=Side(style='thin', color='A6A6A6'), right=Side(style='thin', color='A6A6A6'),
-        top=Side(style='thin', color='A6A6A6'), bottom=Side(style='thin', color='A6A6A6')
-    )
-
-    curr_r += 1
-    for idx, row in enumerate(data["ledger"], start=1):
-        c1 = ws.cell(row=curr_r, column=1, value=idx)
-        c2 = ws.cell(row=curr_r, column=2, value=row["date"])
-        c3 = ws.cell(row=curr_r, column=3, value=row["pay"])
-        c4 = ws.cell(row=curr_r, column=4, value=row["scale"])
-        c5 = ws.cell(row=curr_r, column=5, value=row["remarks"])
-
-        c1.alignment = Alignment(horizontal="center", vertical="center")
-        c2.alignment = Alignment(horizontal="center", vertical="center")
-        c3.alignment = Alignment(horizontal="center", vertical="center")
-        c4.alignment = Alignment(horizontal="center", vertical="center")
-        c5.alignment = Alignment(horizontal="left", vertical="center")
-
-        for c in [c1, c2, c3, c4, c5]:
-            c.font = Font(name="Calibri", size=10)
-            c.border = border_thin
-        curr_r += 1
-
-    ws.column_dimensions['A'].width = 8
-    ws.column_dimensions['B'].width = 14
-    ws.column_dimensions['C'].width = 14
-    ws.column_dimensions['D'].width = 24
-    ws.column_dimensions['E'].width = 38
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-def generate_word_bytes(data):
-    doc = Document()
-    h = data["header"]
-    heading_text = get_official_heading(h)
-
-    logo_path = get_logo_path()
-    if logo_path:
-        p_logo = doc.add_paragraph()
-        p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p_logo.add_run().add_picture(logo_path, width=Inches(1.0))
-
-    p_title = doc.add_paragraph()
-    run = p_title.add_run(heading_text)
-    run.font.name = "Calibri"
-    run.font.bold = True
-    run.font.size = Pt(11)
-    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    particulars = build_particulars_rows(h)
-    p_table = doc.add_table(rows=0, cols=3)
-    p_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for marker, milestone, dt_val in particulars:
-        r_cells = p_table.add_row().cells
-        r_cells[0].text = marker
-        r_cells[1].text = milestone
-        r_cells[2].text = dt_val
-
-        r_cells[0].paragraphs[0].runs[0].font.name = "Calibri"
-        r_cells[0].paragraphs[0].runs[0].font.size = Pt(9.5)
-        r_cells[0].paragraphs[0].runs[0].font.bold = True
-
-        r_cells[1].paragraphs[0].runs[0].font.name = "Calibri"
-        r_cells[1].paragraphs[0].runs[0].font.size = Pt(9.5)
-
-        r_cells[2].paragraphs[0].runs[0].font.name = "Calibri"
-        r_cells[2].paragraphs[0].runs[0].font.size = Pt(9.5)
-        r_cells[2].paragraphs[0].runs[0].font.bold = True
-
-        r_cells[0].width = Inches(0.5)
-        r_cells[1].width = Inches(3.2)
-        r_cells[2].width = Inches(1.8)
-
-    if data.get("special_instructions"):
-        p_note = doc.add_paragraph()
-        r_note = p_note.add_run(f"\nNote: {data['special_instructions']}")
-        r_note.font.italic = True
-        r_note.font.size = Pt(9)
-        r_note.font.color.rgb = RGBColor(0, 32, 96)
-
-    doc.add_paragraph().text = ""
-
-    table = doc.add_table(rows=1, cols=5)
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    table.style = 'Table Grid'
-    hdr_cells = table.rows[0].cells
-    cols = ["Ser", "Date", "Pay Fixed", "Pay Scale", "Remarks"]
-    for i, title in enumerate(cols):
-        hdr_cells[i].text = title
-        hdr_cells[i].paragraphs[0].runs[0].font.name = "Calibri"
-        hdr_cells[i].paragraphs[0].runs[0].font.bold = True
-        hdr_cells[i].paragraphs[0].runs[0].font.size = Pt(9.5)
-        shd = parse_xml(r'<w:shd {} w:fill="D9E1F2"/>'.format(nsdecls('w')))
-        hdr_cells[i]._tc.get_or_add_tcPr().append(shd)
-
-    for idx, row in enumerate(data["ledger"], start=1):
-        row_cells = table.add_row().cells
-        row_cells[0].text = str(idx)
-        row_cells[1].text = str(row["date"])
-        row_cells[2].text = str(row["pay"])
-        row_cells[3].text = str(row["scale"])
-        row_cells[4].text = str(row["remarks"])
-        for c in row_cells:
-            c.paragraphs[0].runs[0].font.name = "Calibri"
-            c.paragraphs[0].runs[0].font.size = Pt(9.0)
-
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
-
-def generate_pdf_bytes(data):
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
-    styles = getSampleStyleSheet()
-    elements = []
-
-    logo_path = get_logo_path()
-    if logo_path:
-        elements.append(RLImage(logo_path, width=65, height=65))
-        elements.append(Spacer(1, 4))
-
-    h = data["header"]
-    heading_text = f"<b>{get_official_heading(h)}</b>"
-    elements.append(Paragraph(heading_text, styles['Title']))
-    elements.append(Spacer(1, 8))
-
-    particulars = build_particulars_rows(h)
-    p_data = [[m, lbl, dt_val] for m, lbl, dt_val in particulars]
-    t_part = Table(p_data, colWidths=[25, 260, 140])
-    t_part.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,0), (-1,-1), 8.5),
-        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
-        ('FONTNAME', (2,0), (2,-1), 'Helvetica-Bold'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-    ]))
-    elements.append(t_part)
-
-    if data.get("special_instructions"):
-        elements.append(Spacer(1, 4))
-        elements.append(Paragraph(f"<i>Note: {data['special_instructions']}</i>", styles['Normal']))
-
-    elements.append(Spacer(1, 10))
-
-    tbl_data = [["Ser", "Date", "Pay Fixed", "Pay Scale", "Remarks"]]
-    for idx, row in enumerate(data["ledger"], start=1):
-        tbl_data.append([str(idx), str(row["date"]), str(row["pay"]), str(row["scale"]), str(row["remarks"])])
-
-    t_main = Table(tbl_data, colWidths=[35, 75, 75, 135, 200])
-    t_main.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#D9E1F2')),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 9),
-        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,1), (-1,-1), 8),
-        ('ALIGN', (0,0), (3,-1), 'CENTER'),
-        ('ALIGN', (4,0), (4,-1), 'LEFT'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#A6A6A6')),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 2.5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
-    ]))
-    elements.append(t_main)
-    doc.build(elements)
-    return buf.getvalue()
-
-# ==============================================================================
-# 7. STREAMLIT APPLICATION INTERFACE
-# ==============================================================================
-def main():
-    logo_file = get_logo_path()
-    st.set_page_config(page_title="Pay Fixation Agent", layout="wide", page_icon=logo_file if logo_file else "🎖️")
-
-    h_col1, h_col2 = st.columns([1, 6])
-    with h_col1:
-        if logo_file:
-            st.image(logo_file, width=95)
-        else:
-            st.markdown("## 🎖️")
-    with h_col2:
-        st.title("Pay Fixation Agent")
-        st.caption("Developed by **SC Rehman Gul** | Government of Pakistan Basic Pay Fixation System (Civil Servants & CAF)")
-
-    registry = load_registry()
-
-    st.markdown("---")
-    app_mode = st.radio(
-        "Select Pay Fixation Cadre:",
-        ["Civil Armed Forces (CAF / Frontier Corps)", "Federal Civil Servants (BPS-01 to BPS-22)"],
-        horizontal=True
-    )
-
-    is_caf = (app_mode == "Civil Armed Forces (CAF / Frontier Corps)")
-    target_category = "CAF" if is_caf else "Civil Servants"
-    cat_meta = registry[target_category]["active"]
-
-    # Chart Vault
-    with st.expander(f"📁 Pay Scale Chart Vault & Live Uploader — [{target_category}]", expanded=False):
-        c_v1, c_v2 = st.columns([2, 3])
-        with c_v1:
-            st.markdown(f"**Active Standard:** `{cat_meta['filename']}`")
-            st.markdown(f"**Revision Epochs:** `{cat_meta['effective_years']}`")
-            st.markdown(f"**Scales Covered:** {len(cat_meta['ranks'])}")
-        with c_v2:
-            up_chart = st.file_uploader(
-                f"Upload New / Revised {target_category} Chart (.xlsx, .csv)",
-                type=["xlsx", "xls", "csv"],
-                key="main_chart_uploader"
-            )
-            if up_chart is not None:
-                parsed_res, err = parse_uploaded_chart(up_chart)
-                if err:
-                    st.error(f"❌ {err}")
-                else:
-                    st.success(f"✅ Readable: {len(parsed_res['ranks'])} scales detected.")
-                    if st.button(f"Activate as New {target_category} Chart", type="primary", key="btn_act_main"):
-                        registry[target_category]["backup"] = cat_meta
-                        new_data_file = f"{target_category.lower().replace(' ', '_')}_active.json"
-                        save_category_data(target_category, parsed_res["scales"], parsed_res["rect_rates"], new_data_file)
-                        registry[target_category]["active"] = {
-                            "filename": up_chart.name,
-                            "approval_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "effective_years": parsed_res["effective_years"],
-                            "ranks": parsed_res["ranks"],
-                            "data_file": new_data_file
-                        }
-                        save_registry(registry)
-                        st.success("🎉 New standard successfully activated!")
-                        st.rerun()
-
-    active_scales, active_rect_rates = load_category_data(target_category, cat_meta["data_file"])
-
-    # ==========================================================================
-    # MODULE 1: SIMPLIFIED CAF PAY FIXATION WORKFLOW
-    # ==========================================================================
-    if is_caf:
-        st.subheader("🎖️ CAF Personnel Service Record")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            fc_no = st.text_input("FC Number", value="102052")
-            name = st.text_input("Full Name", value="Jamal")
-        with c2:
-            cadre_type = st.radio("Cadre / Branch", ["General Duty (GD)", "Technical", "NCs E (Non-Combatant)"], horizontal=True)
-            if cadre_type == "General Duty (GD)":
-                current_rank = st.selectbox("Current Rank", ["Sep", "Lnk", "Nk", "Hav", "N/Sub", "Sub", "SM", "H/Lt", "H/Capt"], index=4)
-            elif cadre_type == "Technical":
-                current_rank = st.selectbox("Current Rank", ["Tech Sep", "Tech Lnk", "Tech Nk", "Tech Hav"], index=3)
-            else:
-                current_rank = "NCs E"
-        with c3:
-            if cadre_type != "NCs E (Non-Combatant)":
-                qualification = st.radio("Educational Category at Enrolment", ["Matric", "Non-Matric"], index=0, horizontal=True)
-            else:
-                qualification = "Matric"
-                st.caption("NCs E: Direct scale enrolment without recruit training.")
-
-        st.markdown("---")
-        st.subheader("📅 Service Dates & Promotion Progression")
-        d_c1, d_c2 = st.columns(2)
-        with d_c1:
-            doe = st.date_input("Date of Enrolment (D.O.E)",
-                                value=datetime.date(2007, 3, 15),
-                                min_value=MIN_APP_DATE,
-                                max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
-            d_remust = None
-            if cadre_type != "NCs E (Non-Combatant)":
-                d_remust = st.date_input("Date of Remustering (as Trained Soldier / Sepoy)",
-                                         value=datetime.date(2007, 9, 10),
-                                         min_value=MIN_APP_DATE,
-                                         max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
-
-        with d_c2:
-            retire_choice = st.checkbox("Has the individual retired?", value=False)
-            retirement_date = None
-            if retire_choice:
-                retirement_date = st.date_input("Date of Retirement",
-                                                value=datetime.date(2026, 7, 1),
-                                                min_value=MIN_APP_DATE,
-                                                max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
-
-        # Smart Automatic Promotion Sequence
-        promotions = []
-        upgradations = []
-
-        if cadre_type == "General Duty (GD)":
-            gd_order = ["Sep", "Lnk", "Nk", "Hav", "N/Sub", "Sub", "SM", "H/Lt", "H/Capt"]
-            curr_idx = gd_order.index(current_rank) if current_rank in gd_order else 0
-
-            if curr_idx > 0:
-                st.markdown("##### 📈 Enter Promotion Dates (Auto-derived from Current Rank)")
-                p_cols = st.columns(min(curr_idx, 4))
-                # Seed dates for realistic testing
-                seed_dates = {
-                    "Lnk": datetime.date(2012, 3, 15),
-                    "Nk": datetime.date(2014, 2, 20),
-                    "Hav": datetime.date(2017, 12, 2),
-                    "N/Sub": datetime.date(2026, 1, 8),
-                    "Sub": datetime.date(2028, 1, 1),
-                    "SM": datetime.date(2030, 1, 1),
-                    "H/Lt": datetime.date(2030, 8, 14),
-                    "H/Capt": datetime.date(2030, 11, 1)
-                }
-                for i in range(1, curr_idx + 1):
-                    rk_name = gd_order[i]
-                    col_target = p_cols[(i-1) % len(p_cols)]
-                    with col_target:
-                        def_d = seed_dates.get(rk_name, datetime.date(2015, 1, 1))
-                        p_dt = st.date_input(f"Pmtd as {rk_name} Date", value=def_d,
-                                             min_value=MIN_APP_DATE, max_value=MAX_APP_DATE,
-                                             key=f"caf_p_{rk_name}").strftime("%Y-%m-%d")
-                        promotions.append({"date": p_dt, "rank": f"GD {rk_name}" if rk_name not in ["Sub", "SM", "H/Lt", "H/Capt"] else rk_name})
-
-        elif cadre_type == "Technical":
-            tech_order = ["Tech Sep", "Tech Lnk", "Tech Nk", "Tech Hav"]
-            curr_idx = tech_order.index(current_rank) if current_rank in tech_order else 0
-            if curr_idx > 0:
-                st.markdown("##### 📈 Enter Technical Promotion Dates")
-                p_cols = st.columns(curr_idx)
-                seed_tech = {
-                    "Tech Lnk": datetime.date(2011, 1, 1),
-                    "Tech Nk": datetime.date(2015, 1, 1),
-                    "Tech Hav": datetime.date(2019, 1, 1)
-                }
-                for i in range(1, curr_idx + 1):
-                    rk_name = tech_order[i]
-                    with p_cols[i-1]:
-                        def_d = seed_tech.get(rk_name, datetime.date(2015, 1, 1))
-                        p_dt = st.date_input(f"Pmtd as {rk_name} Date", value=def_d,
-                                             min_value=MIN_APP_DATE, max_value=MAX_APP_DATE,
-                                             key=f"caf_tp_{rk_name}").strftime("%Y-%m-%d")
-                        promotions.append({"date": p_dt, "rank": rk_name})
-
-        else: # NCsE Movement to Higher Scale
-            st.markdown("##### 📈 NCs E Movement to Higher Scale")
-            num_nc_moves = st.number_input("Number of Higher Scale Movements", min_value=0, max_value=4, value=0, step=1)
-            for m_i in range(num_nc_moves):
-                m_c1, m_c2 = st.columns(2)
-                with m_c1:
-                    m_d = st.date_input(f"Movement {m_i+1} Date", value=datetime.date(2015, 1, 1),
-                                        min_value=MIN_APP_DATE, max_value=MAX_APP_DATE, key=f"nc_d_{m_i}").strftime("%Y-%m-%d")
-                with m_c2:
-                    m_s = st.selectbox(f"Scale {m_i+1}", ["NCs E", "BPS-02", "BPS-03", "BPS-04"], index=min(m_i+1, 3), key=f"nc_s_{m_i}")
-                upgradations.append({"date": m_d, "rank": m_s, "remarks": f"Moved to {m_s}"})
-
-        st.markdown("---")
-        user_notes = st.text_input(
-            "Special Instructions / Directives (Optional):",
-            placeholder="Type notes or official order reference here...",
-            key="caf_notes"
-        )
-
-        st.markdown("---")
-        if st.button("🚀 Calculate CAF Pay Fixation Statement", type="primary"):
-            mapped_enrol_rank = "NCs E" if cadre_type == "NCs E (Non-Combatant)" else ("Tech Sep" if cadre_type == "Technical" else "GD Sep")
-            mapped_current_rank = current_rank if current_rank.startswith("Tech") or current_rank in ["Sub", "SM", "H/Lt", "H/Capt", "NCs E"] else f"GD {current_rank}"
-
-            personnel_payload = {
-                "name": name,
-                "fc_no": fc_no,
-                "rank": mapped_current_rank,
-                "enrol_rank": mapped_enrol_rank,
-                "enrol_post": "GD Rect",
-                "qualification": qualification,
-                "doe": doe,
-                "d_remust": d_remust,
-                "remust_rank": mapped_enrol_rank,
-                "transfers": [],
-                "promotions": promotions,
-                "upgradations": upgradations,
-                "retirement_date": retirement_date,
-                "end_date": "2030-12-31",
-                "category": "CAF",
-                "chart_name": cat_meta["filename"]
-            }
-
-            result = run_comprehensive_pay_fixation(personnel_payload, active_scales, active_rect_rates, user_notes)
-
-            if result.get("warnings"):
-                for w in result["warnings"]:
-                    st.warning(f"⚠️ {w}")
-
-            st.success("✅ CAF Pay fixation calculated successfully in official Ilyas Sb format!")
-
-            official_title = get_official_heading(personnel_payload)
-            st.markdown(f"#### {official_title}")
-
-            particulars_data = build_particulars_rows(personnel_payload)
-            df_part = pd.DataFrame(particulars_data, columns=["Marker", "Milestone", "Date"])
-            st.table(df_part)
-
-            if user_notes.strip():
-                st.markdown(f"**Note:** *{user_notes}*")
-
-            df_ledger = pd.DataFrame(result["ledger"])
-            df_ledger.index = df_ledger.index + 1
-            st.dataframe(df_ledger, use_container_width=True)
-
-            # Downloads
-            st.markdown("### 📥 Download Formal Statements (Ilyas Sb Format)")
-            dcol1, dcol2, dcol3 = st.columns(3)
-            dcol1.download_button(label="📊 Download Excel (.xlsx)", data=generate_excel_bytes(result), file_name=f"Pay_Fixation_{fc_no}_{name}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            dcol2.download_button(label="📄 Download Word (.docx)", data=generate_word_bytes(result), file_name=f"Pay_Fixation_{fc_no}_{name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            dcol3.download_button(label="📑 Download PDF (.pdf)", data=generate_pdf_bytes(result), file_name=f"Pay_Fixation_{fc_no}_{name}.pdf", mime="application/pdf")
-
-    # ==========================================================================
-    # MODULE 2: COMPLETE CIVIL SERVANTS WORKFLOW (100% PRESERVED)
-    # ==========================================================================
-    else:
-        st.subheader("👤 Federal Civil Servant Dossier")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            fc_no = st.text_input("Personnel / Service ID / CNIC", value="CS-10294")
-            name = st.text_input("Officer / Employee Full Name", value="Muhammad Iqbal")
-        with c2:
-            enrol_post = st.text_input("Designation at Appointment", value="GD Recruit Metric")
-            enrol_rank = st.selectbox("Scale at Appointment", ALL_BPS_SCALES, index=3) # BPS-04
-        with c3:
-            final_rank = st.selectbox("Current / Substantive Scale", ALL_BPS_SCALES, index=12) # BPS-13
-            qualification = "Matric"
-
-        st.markdown("---")
-        st.subheader("📅 Service Chronology & Key Milestones (1990 to 2030)")
-        d_col1, d_col2 = st.columns(2)
-        with d_col1:
-            doe = st.date_input("Date of Appointment / Enrolment",
-                                value=datetime.date(2006, 9, 14),
-                                min_value=MIN_APP_DATE, max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
-
-            remust_choice = st.checkbox("Was the employee remustered / trained?", value=True)
-            d_remust = None
-            remust_post = "GD Sepoy"
-            remust_rank = "BPS-05"
-            if remust_choice:
-                r_c1, r_c2, r_c3 = st.columns(3)
-                with r_c1:
-                    d_remust = st.date_input("Date of Remustering", value=datetime.date(2007, 4, 20),
-                                             min_value=MIN_APP_DATE, max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
-                with r_c2:
-                    remust_post = st.text_input("Remustered Post", value="GD Sepoy")
-                with r_c3:
-                    remust_rank = st.selectbox("Remustered Scale", ALL_BPS_SCALES, index=4)
-
-        with d_col2:
-            retire_choice = st.checkbox("Has the employee retired?", value=False)
-            retirement_date = None
-            if retire_choice:
-                retirement_date = st.date_input("Date of Superannuation / Retirement",
-                                                value=datetime.date(2024, 8, 14),
-                                                min_value=MIN_APP_DATE, max_value=MAX_APP_DATE).strftime("%Y-%m-%d")
-
-        # Lateral Transfers
-        st.markdown("---")
-        st.subheader("🔄 Lateral Transfers & Cadre Shifts (FR 22-B)")
-        trans_choice = st.checkbox("Did the employee undergo a lateral transfer (e.g. Soldier Clerk)?", value=True)
-        transfers = []
-        if trans_choice:
-            t_c1, t_c2, t_c3 = st.columns(3)
-            with t_c1:
-                t_dt = st.date_input("Transfer Date", value=datetime.date(2009, 2, 1),
-                                     min_value=MIN_APP_DATE, max_value=MAX_APP_DATE, key="t_dt_civ").strftime("%Y-%m-%d")
-            with t_c2:
-                t_post = st.text_input("Transferred Post", value="Soldier Clerk", key="t_p_civ")
-            with t_c3:
-                t_rk = st.selectbox("Transferred Scale", ALL_BPS_SCALES, index=4, key="t_r_civ")
-            transfers.append({"date": t_dt, "post_designation": t_post, "rank": t_rk})
-
-        # Promotions Timeline
-        st.markdown("---")
-        st.subheader("📈 Promotions Timeline")
-        p_num = st.number_input("Number of Promotions to Record", min_value=0, max_value=8, value=2, step=1)
-        promotions = []
-        default_p = [
-            (datetime.date(2010, 2, 19), "Junior Clerk", "BPS-07"),
-            (datetime.date(2017, 3, 1), "Senior Clerk", "BPS-11"),
-            (datetime.date(2020, 1, 1), "Assistant", "BPS-15"),
-            (datetime.date(2024, 1, 1), "Superintendent", "BPS-17")
-        ]
-        for i in range(p_num):
-            p_c1, p_c2, p_c3 = st.columns(3)
-            def_d, def_p, def_r = default_p[i] if i < len(default_p) else (datetime.date(2020, 1, 1), "Promotion Post", ALL_BPS_SCALES[0])
-            with p_c1:
-                p_date = st.date_input(f"Promotion {i+1} Date", value=def_d,
-                                       min_value=MIN_APP_DATE, max_value=MAX_APP_DATE,
-                                       key=f"civ_promo_d_{i}").strftime("%Y-%m-%d")
-            with p_c2:
-                p_post = st.text_input(f"Post {i+1}", value=def_p, key=f"civ_promo_p_{i}")
-            with p_c3:
-                r_idx = ALL_BPS_SCALES.index(def_r) if def_r in ALL_BPS_SCALES else 0
-                p_scale = st.selectbox(f"Scale {i+1}", ALL_BPS_SCALES, index=r_idx, key=f"civ_promo_r_{i}")
-            promotions.append({"date": p_date, "post_designation": p_post, "rank": p_scale})
-
-        # Upgradations
-        st.markdown("---")
-        st.subheader("⭐ Cadre / Post Up-gradations (Finance Division Policies)")
-        upgradations = []
-        with st.expander("➕ Add Explicit / Departmental Post Upgradation"):
-            u_chk = st.checkbox("Record Custom Post Upgradation", value=False)
-            if u_chk:
-                u_c1, u_c2, u_c3 = st.columns(3)
-                with u_c1:
-                    u_d = st.date_input("Upgradation Date", value=datetime.date(2016, 7, 1),
-                                         min_value=MIN_APP_DATE, max_value=MAX_APP_DATE, key="civ_u_d").strftime("%Y-%m-%d")
-                with u_c2:
-                    u_p = st.text_input("Upgraded Post", value="Junior Clerk", key="civ_u_p")
-                with u_c3:
-                    u_s = st.selectbox("Upgraded Scale", ALL_BPS_SCALES, index=8, key="civ_u_s")
-                upgradations.append({"date": u_d, "designation": u_p, "rank": u_s})
-
-        st.markdown("---")
-        user_notes = st.text_input(
-            "Directives & Notification References:",
-            value="Junior Clerks were subsequently upgraded from BPS-07 to BPS-09 (01-07-2016), and Senior Clerks upgraded to BPS-13 (01-01-2023) under Finance Division OM dated 31-05-2013.",
-            key="civ_notes"
-        )
-
-        st.markdown("---")
-        if st.button("🚀 Calculate Civil Servants Pay Fixation Statement", type="primary"):
-            personnel_payload = {
-                "name": name,
-                "fc_no": fc_no,
-                "rank": final_rank,
-                "enrol_rank": enrol_rank,
-                "enrol_post": enrol_post,
-                "qualification": qualification,
-                "doe": doe,
-                "d_remust": d_remust,
-                "remust_post": remust_post,
-                "remust_rank": remust_rank,
-                "transfers": transfers,
-                "promotions": promotions,
-                "upgradations": upgradations,
-                "retirement_date": retirement_date,
-                "end_date": "2030-12-31",
-                "category": "Civil Servants",
-                "chart_name": cat_meta["filename"]
-            }
-
-            result = run_comprehensive_pay_fixation(personnel_payload, active_scales, active_rect_rates, user_notes)
-            personnel_payload["upgradations"] = result.get("discovered_upgradations", [])
-
-            if result.get("warnings"):
-                for w in result["warnings"]:
-                    st.warning(f"⚠️ {w}")
-
-            st.success("✅ Civil Servants Pay fixation calculated and audited under Finance Division OM dated 31-05-2013!")
-
-            official_title = get_official_heading(personnel_payload)
-            st.markdown(f"#### {official_title}")
-
-            particulars_data = build_particulars_rows(personnel_payload)
-            df_part = pd.DataFrame(particulars_data, columns=["Marker", "Milestone", "Date"])
-            st.table(df_part)
-
-            if user_notes.strip():
-                st.markdown(f"**Note:** *{user_notes}*")
-
-            df_ledger = pd.DataFrame(result["ledger"])
-            df_ledger.index = df_ledger.index + 1
-            st.dataframe(df_ledger, use_container_width=True)
-
-            st.markdown("### 📥 Download Formal Statements (Ilyas Sb Layout)")
-            dcol1, dcol2, dcol3 = st.columns(3)
-            dcol1.download_button(label="📊 Download Excel (.xlsx)", data=generate_excel_bytes(result), file_name=f"Pay_Fixation_{fc_no}_{name}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            dcol2.download_button(label="📄 Download Word (.docx)", data=generate_word_bytes(result), file_name=f"Pay_Fixation_{fc_no}_{name}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            dcol3.download_button(label="📑 Download PDF (.pdf)", data=generate_pdf_bytes(result), file_name=f"Pay_Fixation_{fc_no}_{name}.pdf", mime="application/pdf")
-
-    # App Sharing Footer
-    st.markdown("---")
-    sh_col1, sh_col2, sh_col3 = st.columns([1, 3, 2])
-    with sh_col1:
-        if logo_file:
-            st.image(logo_file, width=80)
-    with sh_col2:
-        st.markdown("**Pay Fixation Agent — Direct Access & Share**")
-        app_url = st.text_input("App / Repository Direct Link:", value="https://github.com", key="share_url")
-        st.markdown(f"🔗 **Direct Link:** [{app_url}]({app_url})")
-    with sh_col3:
-        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=120x120&data={app_url}"
-        st.image(qr_url, caption="Scan QR to open app", width=120)
-
-if __name__ == "__main__":
-    main()
