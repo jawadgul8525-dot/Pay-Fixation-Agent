@@ -26,7 +26,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 MIN_APP_DATE = datetime.date(1990, 1, 1)
 MAX_APP_DATE = datetime.date(2030, 12, 31)
 
-REGISTRY_SCHEMA_VERSION = "2026.11.v12_ANNUAL_INCREMENT_JULY_ELIGIBILITY_FIXED"
+REGISTRY_SCHEMA_VERSION = "2026.11.v12_OFFICIAL_LOGO_BRANDED"
 
 ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 23)]
 NCSE_SCALES = ["NCs E (BPS-01)"] + [f"BPS-{i:02d}" for i in range(2, 12)]
@@ -48,9 +48,10 @@ except Exception:
     pass
 
 # ==============================================================================
-# 0. ROBUST LOGO DISCOVERY & PWA BRANDING INJECTOR
+# 0. OFFICIAL LOGO LOADING & PWA BRANDING INJECTOR
 # ==============================================================================
 def get_logo_path():
+    """Resolves the relative path to logo.png in the project repository."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.path.join(base_dir, "logo.png"),
@@ -61,6 +62,16 @@ def get_logo_path():
     for p in candidates:
         if os.path.exists(p) and os.path.isfile(p):
             return os.path.abspath(p)
+    return None
+
+def get_logo_image():
+    """Loads and returns the official logo as a PIL Image object."""
+    p = get_logo_path()
+    if p:
+        try:
+            return Image.open(p)
+        except Exception:
+            return None
     return None
 
 def get_logo_base64():
