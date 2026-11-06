@@ -4,7 +4,9 @@ import io
 import os
 import re
 import json
+import base64
 import pandas as pd
+from PIL import Image
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from docx import Document
@@ -24,7 +26,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 MIN_APP_DATE = datetime.date(1990, 1, 1)
 MAX_APP_DATE = datetime.date(2030, 12, 31)
 
-REGISTRY_SCHEMA_VERSION = "2026.11.v10_MIXED_GD_TECH_AND_NCSE_BPS11"
+REGISTRY_SCHEMA_VERSION = "2026.11.v11_PARITY_UPGRADE_AND_BRANDED_PWA"
 
 ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 23)]
 NCSE_SCALES = ["NCs E (BPS-01)"] + [f"BPS-{i:02d}" for i in range(2, 12)]
@@ -46,7 +48,7 @@ except Exception:
     pass
 
 # ==============================================================================
-# 0. ROBUST LOGO DISCOVERY & SAFE DATE FORMATTERS
+# 0. ROBUST LOGO DISCOVERY & PWA BRANDING INJECTOR
 # ==============================================================================
 def get_logo_path():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +62,80 @@ def get_logo_path():
         if os.path.exists(p) and os.path.isfile(p):
             return os.path.abspath(p)
     return None
+
+def get_logo_base64():
+    p = get_logo_path()
+    if p and os.path.exists(p):
+        try:
+            with open(p, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        except Exception:
+            return ""
+    return ""
+
+def inject_pwa_branding():
+    b64_img = get_logo_base64()
+    if not b64_img:
+        return
+    
+    data_uri = f"data:image/png;base64,{b64_img}"
+    manifest_data = {
+        "name": "Pay Fixation Agent",
+        "short_name": "Pay Fixation",
+        "description": "Government of Pakistan Basic Pay Fixation System (Civil Servants & CAF)",
+        "start_url": ".",
+        "display": "standalone",
+        "background_color": "#0E1117",
+        "theme_color": "#0E1117",
+        "icons": [
+            {
+                "src": data_uri,
+                "sizes": "192x192 512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    manifest_b64 = base64.b64encode(json.dumps(manifest_data).encode("utf-8")).decode("utf-8")
+    manifest_uri = f"data:application/manifest+json;base64,{manifest_b64}"
+
+    # Injects the custom favicon, apple-touch-icon, and PWA manifest directly into the DOM
+    pwa_script = f"""
+    <script>
+        (function() {{
+            const logoUri = "{data_uri}";
+            const manifestUri = "{manifest_uri}";
+
+            // 1. Browser Favicon
+            let favicon = document.querySelector("link[rel*='icon']");
+            if (!favicon) {{
+                favicon = document.createElement("link");
+                favicon.rel = "shortcut icon";
+                document.head.appendChild(favicon);
+            }}
+            favicon.href = logoUri;
+
+            // 2. Apple Touch Icon (iOS Home Screen / PWA Bookmark)
+            let appleIcon = document.querySelector("link[rel='apple-touch-icon']");
+            if (!appleIcon) {{
+                appleIcon = document.createElement("link");
+                appleIcon.rel = "apple-touch-icon";
+                document.head.appendChild(appleIcon);
+            }}
+            appleIcon.href = logoUri;
+
+            // 3. Web App Manifest (Android / Desktop Chrome PWA Installed Icon)
+            let manifest = document.querySelector("link[rel='manifest']");
+            if (!manifest) {{
+                manifest = document.createElement("link");
+                manifest.rel = "manifest";
+                document.head.appendChild(manifest);
+            }}
+            manifest.href = manifestUri;
+        }})();
+    </script>
+    """
+    st.components.v1.html(pwa_script, height=0, width=0)
 
 def to_display_date(d_val):
     if not d_val or str(d_val).strip() in ["", "None", "N/A"]:
@@ -113,7 +189,7 @@ for i in range(1, 10):
         DEFAULT_CIVIL_SCALES[k_sng] = DEFAULT_CIVIL_SCALES[k_dbl]
 
 # ==============================================================================
-# 2. VERIFIED CAF SCALES (INCLUDING NEW 2026 TECH HAV AMENDMENT)
+# 2. VERIFIED CAF SCALES (INCLUDING 2026 TECH HAV AMENDMENT: 25880-1810-80180)
 # ==============================================================================
 BOOTSTRAP_CAF_SCALES = {
     "NCs E": {
@@ -602,7 +678,6 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
     retirement_date = personnel.get("retirement_date")
     end_date_str = retirement_date if retirement_date else personnel.get("end_date", "2030-12-31")
 
-    # RESTORED AUTOMATIC CADRE UPGRADATION DISCOVERY (CIVIL SERVANTS ONLY)
     if category == "Civil Servants":
         upgradations = resolve_civil_servant_cadre_history(personnel, raw_upgradations)
     else:
@@ -657,7 +732,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 "remarks": rem
             })
 
-    # 5. Up-gradations (NCsE Scale Movements / Civil Up-gradations)
+    # 5. Up-gradations (NCsE Scale Movements / Cadre Up-gradations)
     for u in upgradations:
         if u.get("date") and u["date"] <= end_date_str:
             u_rk = normalize_rank_str(u["rank"])
@@ -824,7 +899,9 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                     "remarks": "Revision"
                 })
 
-        # UPGRADATION / NCsE HIGHER SCALE MOVEMENT
+        # ======================================================================
+        # CORRECTION 1: PARITY FOR UP-GRADATION BENEFIT (CIVIL & CAF FROM 28-01-2002)
+        # ======================================================================
         elif ev_t == "UPGRADATION":
             target_rank = ev.get("rank", current_rank)
             new_sc = get_scale_at_date(target_rank, ev["date"], scales_dict, rev_tag=ev.get("rev_key"))
@@ -833,9 +910,11 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 while p_step < current_pay:
                     p_step += new_sc[1]
 
-                # Finance Division OM dated 31-05-2013 (Premature Increment on Upgradation from 28-01-2002)
-                is_eligible_om_2013 = (ev["date"] >= "2002-01-28" and not ev.get("rev_key") and category == "Civil Servants")
-                if is_eligible_om_2013:
+                # Finance Division OM dated 31-05-2013 and Court Judgements:
+                # Every qualifying post upgradation is treated equivalent to promotion.
+                # Both Civil Servants and CAF personnel receive one additional increment
+                # from 28-01-2002 onward (including retrospective cases such as the 2007 CAF upgradation).
+                if ev["date"] >= "2002-01-28":
                     current_pay = p_step + new_sc[1]
                 else:
                     current_pay = p_step
@@ -1200,9 +1279,22 @@ def generate_pdf_bytes(data):
 # 8. STREAMLIT APPLICATION INTERFACE
 # ==============================================================================
 def main():
-    st.set_page_config(page_title="Pay Fixation Agent", layout="wide", page_icon="🎖️")
-
+    # --------------------------------------------------------------------------
+    # CORRECTION 2: OFFICIAL APP ICON FOR INSTALLED PWA & BROWSER FAVICON
+    # --------------------------------------------------------------------------
     logo_file = get_logo_path()
+    page_icon_obj = "🎖️"
+    if logo_file:
+        try:
+            page_icon_obj = Image.open(logo_file)
+        except Exception:
+            page_icon_obj = "🎖️"
+
+    st.set_page_config(page_title="Pay Fixation Agent", layout="wide", page_icon=page_icon_obj)
+
+    # Injects Web App Manifest & Apple Touch Icon so installed/downloaded PWA displays official logo
+    inject_pwa_branding()
+
     h_col1, h_col2 = st.columns([1, 6])
     with h_col1:
         if logo_file:
@@ -1266,7 +1358,7 @@ def main():
     active_scales, active_rect_rates = load_category_data(target_category, cat_meta["data_file"])
 
     # ==========================================================================
-    # MODULE 1: CAF PAY FIXATION (WITH MIXED GD-TECH & NCsE UP TO BPS-11)
+    # MODULE 1: CAF PAY FIXATION (MIXED GD-TECH & NCsE UP TO BPS-11 PRESERVED)
     # ==========================================================================
     if is_caf:
         st.subheader("🎖️ CAF Personnel Service Record")
@@ -1315,14 +1407,12 @@ def main():
         promotions = []
         upgradations = []
 
-        # CHANGE 2: MIXED GD-TO-TECHNICAL PROMOTION WORKFLOW
         if cadre_type != "NCs E (Non-Combatant)":
             st.markdown("##### 📈 Promotions & Technical Appointments Timeline")
             st.caption("Record each promotion event. You can select either GD or Technical ranks (e.g., GD Sep ➔ GD Lnk ➔ GD Nk ➔ Tech Hav ➔ Tech N/Sub):")
             
             p_num = st.number_input("Number of Promotions / Appointments to Record", min_value=0, max_value=8, value=4, step=1)
             
-            # Default progression seed (GD to Technical mixed example)
             default_caf_mix = [
                 (datetime.date(2012, 3, 15), "GD Lnk"),
                 (datetime.date(2014, 2, 20), "GD Nk"),
@@ -1343,7 +1433,6 @@ def main():
                 
                 promotions.append({"date": p_dt, "rank": p_rk})
 
-        # CHANGE 1: EXTENDED NCsE PROGRESSION UP TO BPS-11
         else:
             st.markdown("##### 📈 NCs E Movement to Higher Scale (BPS-01 to BPS-11)")
             st.caption("Record dates of transition to subsequent higher pay scales:")
@@ -1379,7 +1468,6 @@ def main():
                 mapped_enrol_rank = "NCs E"
                 ncse_initial_code = normalize_rank_str(ncse_init)
             else:
-                # Regular soldier enrols as Recruit and remusters as Sepoy (GD or Tech)
                 first_rank = promotions[0]["rank"] if promotions else current_rank
                 mapped_enrol_rank = "Tech Sep" if "Tech" in first_rank else "GD Sep"
                 ncse_initial_code = None
@@ -1434,7 +1522,7 @@ def main():
             dcol3.download_button(label="📑 Download PDF (.pdf)", data=generate_pdf_bytes(result), file_name=f"Pay_Fixation_{fc_no}_{name}.pdf", mime="application/pdf")
 
     # ==========================================================================
-    # MODULE 2: COMPLETE CIVIL SERVANTS WORKFLOW (100% UNTOUCHED & FROZEN)
+    # MODULE 2: COMPLETE CIVIL SERVANTS WORKFLOW (PRESERVED)
     # ==========================================================================
     else:
         st.subheader("👤 Federal Civil Servant Dossier")
@@ -1444,9 +1532,9 @@ def main():
             name = st.text_input("Officer / Employee Full Name", value="Muhammad Iqbal")
         with c2:
             enrol_post = st.text_input("Designation at Appointment", value="GD Recruit Metric")
-            enrol_rank = st.selectbox("Scale at Appointment", ALL_BPS_SCALES, index=3) # BPS-04
+            enrol_rank = st.selectbox("Scale at Appointment", ALL_BPS_SCALES, index=3)
         with c3:
-            final_rank = st.selectbox("Current / Substantive Scale", ALL_BPS_SCALES, index=12) # BPS-13
+            final_rank = st.selectbox("Current / Substantive Scale", ALL_BPS_SCALES, index=12)
             qualification = "Matric"
 
         st.markdown("---")
@@ -1498,7 +1586,7 @@ def main():
         # Promotions Timeline with Automatic Cadre Upgradation Intelligence
         st.markdown("---")
         st.subheader("📈 Promotions Timeline")
-        st.caption("ℹ️ **Automatic Post Upgradation Active:** Enter the promotion date and post. The application automatically determines the applicable BPS for that year and injects all subsequent official cadre up-gradations (e.g. Junior Clerk to BPS-09 in 2016, Senior Clerk to BPS-13 in 2023) with OM 31-05-2013 premature increments.")
+        st.caption("ℹ️ **Automatic Post Upgradation Active:** Enter promotion dates and posts. The application automatically determines the applicable BPS for that year and injects all subsequent official cadre up-gradations (e.g. Junior Clerk to BPS-09 in 2016, Senior Clerk to BPS-13 in 2023) with OM 31-05-2013 premature increments.")
 
         p_num = st.number_input("Number of Promotions to Record", min_value=0, max_value=8, value=2, step=1)
         promotions = []
