@@ -26,7 +26,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 MIN_APP_DATE = datetime.date(1990, 1, 1)
 MAX_APP_DATE = datetime.date(2030, 12, 31)
 
-REGISTRY_SCHEMA_VERSION = "2026.11.v11_PARITY_UPGRADE_AND_BRANDED_PWA"
+REGISTRY_SCHEMA_VERSION = "2026.11.v12_ANNUAL_INCREMENT_JULY_ELIGIBILITY_FIXED"
 
 ALL_BPS_SCALES = [f"BPS-{i:02d}" for i in range(1, 23)]
 NCSE_SCALES = ["NCs E (BPS-01)"] + [f"BPS-{i:02d}" for i in range(2, 12)]
@@ -99,14 +99,12 @@ def inject_pwa_branding():
     manifest_b64 = base64.b64encode(json.dumps(manifest_data).encode("utf-8")).decode("utf-8")
     manifest_uri = f"data:application/manifest+json;base64,{manifest_b64}"
 
-    # Injects the custom favicon, apple-touch-icon, and PWA manifest directly into the DOM
     pwa_script = f"""
     <script>
         (function() {{
             const logoUri = "{data_uri}";
             const manifestUri = "{manifest_uri}";
 
-            // 1. Browser Favicon
             let favicon = document.querySelector("link[rel*='icon']");
             if (!favicon) {{
                 favicon = document.createElement("link");
@@ -115,7 +113,6 @@ def inject_pwa_branding():
             }}
             favicon.href = logoUri;
 
-            // 2. Apple Touch Icon (iOS Home Screen / PWA Bookmark)
             let appleIcon = document.querySelector("link[rel='apple-touch-icon']");
             if (!appleIcon) {{
                 appleIcon = document.createElement("link");
@@ -124,7 +121,6 @@ def inject_pwa_branding():
             }}
             appleIcon.href = logoUri;
 
-            // 3. Web App Manifest (Android / Desktop Chrome PWA Installed Icon)
             let manifest = document.querySelector("link[rel='manifest']");
             if (!manifest) {{
                 manifest = document.createElement("link");
@@ -633,7 +629,6 @@ def resolve_civil_servant_cadre_history(personnel, raw_upgradations):
 def get_scale_at_date(rank, target_date_str, scales_dict, rev_tag=None):
     norm_rk = normalize_rank_str(rank)
     if norm_rk.startswith("BPS-") and norm_rk not in scales_dict:
-        # Check Civil Scales directly for NCsE BPS-02 through BPS-11
         if norm_rk in DEFAULT_CIVIL_SCALES:
             r_scales = DEFAULT_CIVIL_SCALES[norm_rk]
             target_dt = datetime.datetime.strptime(target_date_str, "%Y-%m-%d").date()
@@ -853,12 +848,27 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 "remarks": ev.get("remarks", f"Transferred as {target_rank}")
             })
 
+        # ======================================================================
+        # ANNUAL INCREMENT: EXACT 6-MONTH QUALIFYING CALCULATION (INCLUDING 01-07)
+        # ======================================================================
         elif ev_t == "ANNUAL_INCREMENT":
             if not isinstance(current_pay, (int, float)):
                 ledger.append({"date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"', "remarks": "HOLD — Scale Unresolved"})
                 continue
-            days_served = (ev_dt - last_change_dt).days if last_change_dt else 365
-            if days_served < 180:
+
+            # Qualifying service rule: Personnel appointed, promoted, or up-graded on or before
+            # 1st July of the increment year complete the qualifying period for the 1st December increment.
+            # Personnel appointed or promoted on or after 2nd July are not entitled in that increment cycle.
+            is_entitled = True
+            if last_change_dt:
+                if last_change_dt.year == ev_dt.year:
+                    cutoff_date = datetime.date(ev_dt.year, 7, 1)
+                    if last_change_dt > cutoff_date:
+                        is_entitled = False
+                elif last_change_dt > ev_dt:
+                    is_entitled = False
+
+            if not is_entitled:
                 ledger.append({
                     "date": ev_dt.strftime("%d-%m-%Y"), "pay": current_pay, "scale": '"',
                     "remarks": "Not entitled"
@@ -899,9 +909,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                     "remarks": "Revision"
                 })
 
-        # ======================================================================
-        # CORRECTION 1: PARITY FOR UP-GRADATION BENEFIT (CIVIL & CAF FROM 28-01-2002)
-        # ======================================================================
+        # UP-GRADATION BENEFIT (PARITY: CIVIL & CAF FROM 28-01-2002 ONWARD)
         elif ev_t == "UPGRADATION":
             target_rank = ev.get("rank", current_rank)
             new_sc = get_scale_at_date(target_rank, ev["date"], scales_dict, rev_tag=ev.get("rev_key"))
@@ -910,10 +918,6 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                 while p_step < current_pay:
                     p_step += new_sc[1]
 
-                # Finance Division OM dated 31-05-2013 and Court Judgements:
-                # Every qualifying post upgradation is treated equivalent to promotion.
-                # Both Civil Servants and CAF personnel receive one additional increment
-                # from 28-01-2002 onward (including retrospective cases such as the 2007 CAF upgradation).
                 if ev["date"] >= "2002-01-28":
                     current_pay = p_step + new_sc[1]
                 else:
@@ -960,7 +964,7 @@ def run_comprehensive_pay_fixation(personnel, scales_dict, rect_rates, special_i
                         p_step = new_sc[0]
                         while p_step < current_pay:
                             p_step += new_sc[1]
-                        current_pay = p_step + new_sc[1] # Step-up + 1 Promotional Increment
+                        current_pay = p_step + new_sc[1]
                     current_scale = new_sc
                     substantive_scale = new_sc
                 last_change_dt = ev_dt
@@ -1279,9 +1283,6 @@ def generate_pdf_bytes(data):
 # 8. STREAMLIT APPLICATION INTERFACE
 # ==============================================================================
 def main():
-    # --------------------------------------------------------------------------
-    # CORRECTION 2: OFFICIAL APP ICON FOR INSTALLED PWA & BROWSER FAVICON
-    # --------------------------------------------------------------------------
     logo_file = get_logo_path()
     page_icon_obj = "🎖️"
     if logo_file:
@@ -1292,7 +1293,6 @@ def main():
 
     st.set_page_config(page_title="Pay Fixation Agent", layout="wide", page_icon=page_icon_obj)
 
-    # Injects Web App Manifest & Apple Touch Icon so installed/downloaded PWA displays official logo
     inject_pwa_branding()
 
     h_col1, h_col2 = st.columns([1, 6])
@@ -1321,7 +1321,6 @@ def main():
     target_category = "CAF" if is_caf else "Civil Servants"
     cat_meta = registry[target_category]["active"]
 
-    # Chart Vault & Live Uploader
     with st.expander(f"📁 Pay Scale Chart Vault & Live Uploader — [{target_category}]", expanded=False):
         c_v1, c_v2 = st.columns([2, 3])
         with c_v1:
